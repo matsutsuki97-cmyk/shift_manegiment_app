@@ -5,3 +5,4 @@ jpholiday
 plotly
 pandas
 torch
+openpyxl
