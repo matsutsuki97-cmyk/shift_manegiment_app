@@ -220,8 +220,26 @@ else:
             
             if date_str not in st.session_state.daily_adjusted_times:
                 st.session_state.daily_adjusted_times[date_str] = {}
+                
+                # 今選んでいる日付が属する「週（月曜日）」のキーを計算
+                target_monday = target_date - datetime.timedelta(days=target_date.weekday())
+                week_key = target_monday.strftime('%Y-%m-%d')
+                
                 for name in st.session_state.employees["名前"]:
-                    st.session_state.daily_adjusted_times[date_str][name] = st.session_state.time_requests[name][base_day]
+                    user_all_reqs = st.session_state.time_requests.get(name, {})
+                    
+                    # 💡 指定した週のデータを探す。なければ一番新しい週を借りる
+                    week_data = user_all_reqs.get(week_key, {})
+                    if not week_data and user_all_reqs:
+                        latest_key = list(user_all_reqs.keys())[-1]
+                        week_data = user_all_reqs[latest_key] if isinstance(user_all_reqs[latest_key], dict) else user_all_reqs
+                    
+                    # 曜日ごとの希望時間を取得。データがなければ 9:00〜24:00 をデフォルトに
+                    req = week_data.get(base_day, (9.0, 24.0))
+                    
+                    # 店長の調整用データとして保存
+                    st.session_state.daily_adjusted_times[date_str][name] = req
+
             if date_str not in st.session_state.daily_removed_staff:
                 st.session_state.daily_removed_staff[date_str] = []
                 
@@ -419,21 +437,34 @@ else:
                 
                 chart_data = []
                 off_staff = [] 
-                
                 for name in st.session_state.employees["名前"]:
-                    user_data = st.session_state.time_requests.get(name, {})
-
-                    if user_data:
-                        # 昔の形式（"月"などが直接入っている）が残っている場合の安全装置
-                        if "月" in user_data:
-                            req_start, req_end = tuple(user_data.get(base_day, (6.0, 6.0)))
-                        else:
-                            # 新しい形式の場合、とりあえず一番新しく提出された「最新の週」のデータを取り出す
-                            latest_week = list(user_data.keys())[-1]
-                            req_start, req_end = tuple(user_data[latest_week].get(base_day, (6.0, 6.0)))
+                    # 1. そのスタッフの全データを取得
+                    user_all_reqs = st.session_state.time_requests.get(name, {})
+                    
+                    # 2. 今表示している日付の「月曜日」を特定
+                    target_monday_graph = target_date - datetime.timedelta(days=target_date.weekday())
+                    week_key_graph = target_monday_graph.strftime('%Y-%m-%d')
+                    
+                    # 3. 指定した週のデータを探す
+                    week_data = user_all_reqs.get(week_key_graph, {})
+                    
+                    # 4. もし今週分がなければ、一番新しい提出分を予備で使う
+                    if not week_data and user_all_reqs:
+                        latest_key = list(user_all_reqs.keys())[-1]
+                        # 辞書形式なら中身を、そうでなければ(古い形式)そのまま使う
+                        week_data = user_all_reqs[latest_key] if isinstance(user_all_reqs[latest_key], dict) else user_all_reqs
+                    
+                    # 5. その日の希望時間を取得（データが全くなければ休み扱い）
+                    if isinstance(week_data, dict):
+                        req_start, req_end = week_data.get(base_day, (6.0, 6.0))
                     else:
-                        # データが何もない場合は休み（6.0, 6.0）扱いにする
                         req_start, req_end = (6.0, 6.0)
+
+                    # --- ここから下は元の「if req_start == req_end:」の処理に続きます ---
+                    if req_start == req_end:
+                        off_staff.append(name) 
+                        continue
+
                     
                     # 取り出した結果、出勤時間と退勤時間が同じ（休み）ならリストから除外する
                     if req_start == req_end:
