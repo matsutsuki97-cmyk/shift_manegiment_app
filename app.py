@@ -596,25 +596,47 @@ else:
                         # st.write(f"検索キー: {week_key} / 曜日: {base_day}")
                         continue
 
-                # --- 3. 休みのスタッフを戻すエリア（週対応版） ---
-                if st.session_state.daily_removed_staff[date_str]:
+                # --- 3. 休みのスタッフを戻すエリア（見える化版） ---
+                if st.session_state.daily_removed_staff.get(date_str):
                     st.write("---")
                     st.subheader("↩️ 休みのスタッフを戻す")
-                    for name in st.session_state.daily_removed_staff[date_str]:
+                    st.caption("本来の希望時間を確認して、シフトに戻せます。")
+                    
+                    # リストのコピーでループ（削除時のエラー防止）
+                    for name in list(st.session_state.daily_removed_staff[date_str]):
                         try:
                             u_reqs = st.session_state.time_requests.get(name, {})
                             t_monday = target_date - datetime.timedelta(days=target_date.weekday())
                             w_key = t_monday.strftime('%Y-%m-%d')
-                            w_data = u_reqs.get(w_key, u_reqs.get(list(u_reqs.keys())[-1], {}))
+                            
+                            # 週データの取得
+                            w_data = u_reqs.get(w_key, {})
+                            if not w_data and u_reqs:
+                                l_key = list(u_reqs.keys())[-1]
+                                w_data = u_reqs[l_key] if isinstance(u_reqs[l_key], dict) else u_reqs
+                            
                             r_s, r_e = w_data.get(base_day, (6.0, 6.0))
                             
-                            btn_label = f"➕ {name} を出勤させる" + (f" (希望: {float_to_time_str(r_s)}〜)" if r_s < r_e else "")
-                            if st.button(btn_label, key=f"restore_btn_{date_str}_{name}", use_container_width=True):
-                                st.session_state.daily_adjusted_times[date_str][name] = [r_s, r_e]
+                            # 💡 ここで「見える化」用の文字を作っています！
+                            if r_s < r_e:
+                                time_info = f" (希望: {float_to_time_str(r_s)} 〜 {float_to_time_str(r_e)})"
+                            else:
+                                time_info = " (希望: 休み)"
+                                
+                            btn_label = f"➕ {name} を出勤させる {time_info}"
+                            
+                            if st.button(btn_label, key=f"restore_vFinal_{date_str}_{name}", use_container_width=True):
+                                # 調整データを上書きして復活
+                                if date_str not in st.session_state.daily_adjusted_times:
+                                    st.session_state.daily_adjusted_times[date_str] = {}
+                                st.session_state.daily_adjusted_times[date_str][name] = (r_s, r_e)
+                                
+                                # 休みリストから消去
                                 st.session_state.daily_removed_staff[date_str].remove(name)
                                 save_data()
                                 st.rerun()
-                        except:
+                                
+                        except Exception as e:
                             continue
             st.divider()
             st.subheader(f"📥 {date_str} の1日分 Excel出力")
