@@ -980,6 +980,7 @@ else:
 
                 with st.container():
                     # 曜日と一緒に日付も表示する！
+                    curr_start, curr_end = tuple(user_times[day])
                     st.markdown(f"**{name}** (希望: {float_to_time_str(req_start)} 〜 {float_to_time_str(req_end)})")
                     
                     curr_start, curr_end = tuple(user_times[day])
