@@ -502,32 +502,40 @@ else:
                         with st.container():
                             st.markdown(f"**{name}** (希望: {float_to_time_str(req_start)} 〜 {float_to_time_str(req_end)})")
                             
-                            req_s_str = float_to_time_str(req_start)
-                            req_e_str = float_to_time_str(req_end)
-                            adj_s_str = float_to_time_str(adj_start)
-                            adj_e_str = float_to_time_str(adj_end)
+                            # 💡 25時（一桁時間 6:00 等）に完全対応させる変換
+                            def to_slider_str(f):
+                                h = int(f)
+                                m = int((f - h) * 60)
+                                return f"{h}:{m:02d}"
+
+                            req_s_str = to_slider_str(req_start)
+                            req_e_str = to_slider_str(req_end)
+                            adj_s_str = to_slider_str(adj_start)
+                            adj_e_str = to_slider_str(adj_end)
                             
-                            idx_start = time_options.index(req_s_str)
-                            idx_end = time_options.index(req_e_str)
-                            valid_options = time_options[idx_start : idx_end+1]
-                            
+                            # リスト内から位置を探す（エラー対策付き）
+                            try:
+                                idx_start = time_options.index(req_s_str)
+                                idx_end = time_options.index(req_e_str)
+                                valid_options = time_options[idx_start : idx_end+1]
+                            except ValueError:
+                                # 万が一見つからない場合は全範囲を出す
+                                valid_options = time_options
+
+                            # 💡 len > 1 の外側でも処理が続くようにガードレールを強化
                             if len(valid_options) > 1:
-                                # ==========================================
-                                # 💡 ここが修正ポイント：ガードレールを引く
-                                # ==========================================
-                                # 店長の調整データが、現在の選択肢(valid_options)の中にあるかチェック
-                                # 無ければ、スタッフの希望時間（端っこ）に強制的に合わせる
+                                # 現在の調整値が範囲外なら希望に合わせる
                                 final_adj_s = adj_s_str if adj_s_str in valid_options else req_s_str
                                 final_adj_e = adj_e_str if adj_e_str in valid_options else req_e_str
                                 
                                 new_adj_str = st.select_slider(
                                     "勤務時間", 
                                     options=valid_options, 
-                                    # 安全な値(final_...)を渡す
                                     value=(final_adj_s, final_adj_e), 
                                     key=f"slider_{date_str}_{name}",
                                     label_visibility="collapsed"
                                 )
+                                
                                 new_adj = (time_str_to_float(new_adj_str[0]), time_str_to_float(new_adj_str[1]))
                                 
                                 if new_adj != (adj_start, adj_end):
@@ -535,12 +543,16 @@ else:
                                     save_data() 
                                     st.rerun()
                             else:
-                                st.write("※時間が短すぎるため調整できません")
+                                # 休み希望などの場合。ここを通ることで下の「休みに変更」ボタンやエクセルまで処理が続く！
+                                st.write("※休み希望、または固定時間のため調整不要です")
 
+                            # --- ここから下のボタンやDividerは if の外に出す ---
                             if st.button(f"❌ 休みに変更", key=f"remove_{date_str}_{name}", use_container_width=True):
-                                st.session_state.daily_removed_staff[date_str].append(name)
+                                if name not in st.session_state.daily_removed_staff[date_str]:
+                                    st.session_state.daily_removed_staff[date_str].append(name)
                                 save_data() 
                                 st.rerun()
+                            
                             st.divider()
                 else:
                     st.write("調整できるスタッフがいません。")
@@ -913,7 +925,7 @@ else:
 
                 with st.container():
                     # 曜日と一緒に日付も表示する！
-                    st.markdown(f"**{day}曜日 ({date_str})**")
+                    st.markdown(f"**{name}** (希望: {float_to_time_str(req_start)} 〜 {float_to_time_str(req_end)})")
                     
                     curr_start, curr_end = tuple(user_times[day])
                     is_off = (curr_start == curr_end)
