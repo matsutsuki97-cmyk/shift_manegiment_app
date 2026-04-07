@@ -421,7 +421,21 @@ else:
                 off_staff = [] 
                 
                 for name in st.session_state.employees["名前"]:
-                    req_start, req_end = tuple(st.session_state.time_requests[name][base_day])
+                    user_data = st.session_state.time_requests.get(name, {})
+
+                    if user_data:
+                        # 昔の形式（"月"などが直接入っている）が残っている場合の安全装置
+                        if "月" in user_data:
+                            req_start, req_end = tuple(user_data.get(base_day, (6.0, 6.0)))
+                        else:
+                            # 新しい形式の場合、とりあえず一番新しく提出された「最新の週」のデータを取り出す
+                            latest_week = list(user_data.keys())[-1]
+                            req_start, req_end = tuple(user_data[latest_week].get(base_day, (6.0, 6.0)))
+                    else:
+                        # データが何もない場合は休み（6.0, 6.0）扱いにする
+                        req_start, req_end = (6.0, 6.0)
+                    
+                    # 取り出した結果、出勤時間と退勤時間が同じ（休み）ならリストから除外する
                     if req_start == req_end:
                         off_staff.append(name) 
                         continue
