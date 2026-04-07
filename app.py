@@ -572,7 +572,8 @@ else:
                 working_staff = []
                 for n in st.session_state.employees["名前"]:
                     if n not in st.session_state.daily_removed_staff[date_str]:
-                        a_s, a_e = tuple(st.session_state.daily_adjusted_times[date_str][n])
+                        day_adjustments_df = st.session_state.daily_adjusted_times.get(date_str, {})
+                        a_s, a_e = tuple(day_adjustments_df.get(n, (6.0, 6.0)))
                         if a_s < a_e:
                             working_staff.append({"name": n, "start": float(a_s), "end": float(a_e)})
                 
