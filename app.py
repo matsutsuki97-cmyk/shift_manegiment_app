@@ -139,10 +139,10 @@ if 'employees' not in st.session_state:
         st.session_state.special_required_staff = {}
         st.session_state.previous_times = {} 
         st.session_state.quick_buttons = [
-            {"name": "🌅 早番", "start": 9.0, "end": 17.0},
-            {"name": "🌙 中番", "start": 17.0, "end": 21.0},
-            {"name": "🕛 中遅", "start": 17.0, "end": 25.0},
-            {"name": "🦉 遅番", "start": 21.0, "end": 25.0}
+            {"name": "早番", "start": 9.0, "end": 17.0},
+            {"name": "中番", "start": 17.0, "end": 21.0},
+            {"name": "中遅", "start": 17.0, "end": 25.0},
+            {"name": "遅番", "start": 21.0, "end": 25.0}
         ]
 
 if 'logged_in' not in st.session_state:
@@ -159,7 +159,6 @@ if not st.session_state.logged_in:
     with col1:
         st.info("""
         **【ログイン情報】**
-        * 管理者 ➔ ID: `admin` / Pass: `admin`
         * スタッフ ➔ 各自に設定されたIDとパスワード
         """)
         
