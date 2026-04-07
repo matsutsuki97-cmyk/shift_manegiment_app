@@ -441,7 +441,8 @@ else:
                         continue
                         
                     if name not in st.session_state.daily_removed_staff[date_str]:
-                        adj_start, adj_end = tuple(st.session_state.daily_adjusted_times[date_str][name])
+                        day_adjustments = st.session_state.daily_adjusted_times.get(date_str, {})
+                        adj_start, adj_end = tuple(day_adjustments.get(name, (req_start, req_end)))
                         if adj_start < adj_end:
                             lvl = st.session_state.employees.loc[st.session_state.employees["名前"]==name, "レベル"].values[0]
                             chart_data.append({
