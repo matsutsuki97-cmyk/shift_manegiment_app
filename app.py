@@ -20,8 +20,10 @@ try:
     satisfaction_ai.eval() # 推論モード
     PYTORCH_AVAILABLE = True
 except Exception as e:
-    PYTORCH_AVAILABLE = False
-    st.error(f"PyTorchモデルの読み込みに失敗しました。ファイル名やコードを確認してください: {e}")
+    st.error(f"⚠️ {name}さんのデータに不備があります: {e}")
+    continue
+    
+    
 
 # --- 1. ページ設定 ---
 st.set_page_config(page_title="AIシフト管理（PyTorch最適化対応）", layout="wide")
