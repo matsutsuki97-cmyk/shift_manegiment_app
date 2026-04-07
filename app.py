@@ -520,6 +520,13 @@ else:
                 # これにより、特定のスタッフでエラーが起きても他のスタッフが表示されるようになります
                 for name in st.session_state.employees["名前"]:
                     try:
+                        def to_slider_str(f):
+                            try:
+                                h = int(f)
+                                m = int(round((f - h) * 60))
+                                return f"{h}:{m:02d}"
+                            except:
+                                return "9:00" # 万が一エラーが出ても止まらないようにする
                         # --- 1. データの準備（週対応） ---
                         user_all_reqs = st.session_state.time_requests.get(name, {})
                         target_monday = target_date - datetime.timedelta(days=target_date.weekday())
