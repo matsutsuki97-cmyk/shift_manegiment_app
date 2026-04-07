@@ -500,54 +500,61 @@ else:
                             req_start, req_end = (6.0, 6.0)
 
                         with st.container():
-                            st.markdown(f"**{name}** (希望: {float_to_time_str(req_start)} 〜 {float_to_time_str(req_end)})")
+                            # 1. まず名前を表示（ここまでは絶対に出るはず）
+                            st.markdown(f"**{name}**")
                             
-                            # 💡 25時（一桁時間 6:00 等）に完全対応させる変換
+                            # 2. 安全な変換関数
                             def to_slider_str(f):
-                                h = int(f)
-                                m = int((f - h) * 60)
-                                return f"{h}:{m:02d}"
+                                try:
+                                    h = int(f)
+                                    m = int((f - h) * 60)
+                                    return f"{h}:{m:02d}"
+                                except:
+                                    return "9:00" # 失敗したら適当な時間を返す
 
                             req_s_str = to_slider_str(req_start)
                             req_e_str = to_slider_str(req_end)
-                            adj_s_str = to_slider_str(adj_start)
-                            adj_e_str = to_slider_str(adj_end)
                             
-                            # リスト内から位置を探す（エラー対策付き）
-                            try:
+                            # 3. リストから位置を探す（ここが一番の鬼門）
+                            # time_options の中に本当にその文字があるか超厳密にチェック
+                            if req_s_str in time_options and req_e_str in time_options:
                                 idx_start = time_options.index(req_s_str)
                                 idx_end = time_options.index(req_e_str)
                                 valid_options = time_options[idx_start : idx_end+1]
-                            except ValueError:
-                                # 万が一見つからない場合は全範囲を出す
-                                valid_options = time_options
+                            else:
+                                # 見つからなければ、スライダーを出さずに「範囲外」として扱う
+                                valid_options = []
 
-                            # 💡 len > 1 の外側でも処理が続くようにガードレールを強化
+                            # 4. スライダーを表示（中身があるときだけ）
                             if len(valid_options) > 1:
-                                # 現在の調整値が範囲外なら希望に合わせる
+                                adj_s_str = to_slider_str(adj_start)
+                                adj_e_str = to_slider_str(adj_end)
+                                
                                 final_adj_s = adj_s_str if adj_s_str in valid_options else req_s_str
                                 final_adj_e = adj_e_str if adj_e_str in valid_options else req_e_str
                                 
-                                new_adj_str = st.select_slider(
-                                    "勤務時間", 
-                                    options=valid_options, 
-                                    value=(final_adj_s, final_adj_e), 
-                                    key=f"slider_{date_str}_{name}",
-                                    label_visibility="collapsed"
-                                )
-                                
-                                new_adj = (time_str_to_float(new_adj_str[0]), time_str_to_float(new_adj_str[1]))
-                                
-                                if new_adj != (adj_start, adj_end):
-                                    st.session_state.daily_adjusted_times[date_str][name] = new_adj
-                                    save_data() 
-                                    st.rerun()
+                                try:
+                                    new_adj_str = st.select_slider(
+                                        "時間調整", 
+                                        options=valid_options, 
+                                        value=(final_adj_s, final_adj_e), 
+                                        key=f"slider_final_{date_str}_{name}", # keyを変えて古い記憶を消す
+                                        label_visibility="collapsed"
+                                    )
+                                    # 保存処理
+                                    new_adj = (time_str_to_float(new_adj_str[0]), time_str_to_float(new_adj_str[1]))
+                                    if new_adj != (adj_start, adj_end):
+                                        st.session_state.daily_adjusted_times[date_str][name] = new_adj
+                                        save_data()
+                                        st.rerun()
+                                except Exception as e:
+                                    st.error(f"スライダー表示エラー: {name}")
                             else:
-                                # 休み希望などの場合。ここを通ることで下の「休みに変更」ボタンやエクセルまで処理が続く！
-                                st.write("※休み希望、または固定時間のため調整不要です")
+                                # 💡 ここが大事：スライダーが出せなくても、情報を出して処理を止めない
+                                st.info(f"希望時間: {req_s_str} 〜 {req_e_str} (調整不可)")
 
-                            # --- ここから下のボタンやDividerは if の外に出す ---
-                            if st.button(f"❌ 休みに変更", key=f"remove_{date_str}_{name}", use_container_width=True):
+                            # 5. 【重要】if の外に出す！これでボタンとExcelが復活する
+                            if st.button(f"❌ 休みに変更", key=f"remove_v2_{date_str}_{name}", use_container_width=True):
                                 if name not in st.session_state.daily_removed_staff[date_str]:
                                     st.session_state.daily_removed_staff[date_str].append(name)
                                 save_data() 
