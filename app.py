@@ -486,8 +486,18 @@ else:
                 if chart_data:
                     for d in chart_data:
                         name = d["スタッフ名"]
-                        req_start, req_end = tuple(st.session_state.time_requests[name][base_day])
-                        adj_start, adj_end = tuple(st.session_state.daily_adjusted_times[date_str][name])
+                        user_data_489 = st.session_state.time_requests.get(name, {})
+
+                        if user_data_489:
+                            if "月" in user_data_489:
+                                req_start, req_end = tuple(user_data_489.get(base_day, (6.0, 6.0)))
+                            else:
+                                # 新しい形式の場合、一番新しく提出された「最新の週」のデータを取り出す
+                                latest_week = list(user_data_489.keys())[-1]
+                                req_start, req_end = tuple(user_data_489[latest_week].get(base_day, (6.0, 6.0)))
+                        else:
+                            # データが何もない場合は休み（6.0, 6.0）扱いにする
+                            req_start, req_end = (6.0, 6.0)
 
                         with st.container():
                             st.markdown(f"**{name}** (希望: {float_to_time_str(req_start)} 〜 {float_to_time_str(req_end)})")
