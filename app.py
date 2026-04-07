@@ -512,10 +512,19 @@ else:
                             valid_options = time_options[idx_start : idx_end+1]
                             
                             if len(valid_options) > 1:
+                                # ==========================================
+                                # 💡 ここが修正ポイント：ガードレールを引く
+                                # ==========================================
+                                # 店長の調整データが、現在の選択肢(valid_options)の中にあるかチェック
+                                # 無ければ、スタッフの希望時間（端っこ）に強制的に合わせる
+                                final_adj_s = adj_s_str if adj_s_str in valid_options else req_s_str
+                                final_adj_e = adj_e_str if adj_e_str in valid_options else req_e_str
+                                
                                 new_adj_str = st.select_slider(
                                     "勤務時間", 
                                     options=valid_options, 
-                                    value=(adj_s_str, adj_e_str), 
+                                    # 安全な値(final_...)を渡す
+                                    value=(final_adj_s, final_adj_e), 
                                     key=f"slider_{date_str}_{name}",
                                     label_visibility="collapsed"
                                 )
