@@ -853,6 +853,7 @@ else:
                         for j, qb in enumerate(qbs):
                             with btn_cols[j]:
                                 if st.button(qb["name"], key=f"btn_{day}_{j}", use_container_width=True):
+                                    st.session_state[f"time_{day}"] = (float_to_time_str(qb["start"]), float_to_time_str(qb["end"]))
                                     user_times[day] = (qb["start"], qb["end"])
                                     st.session_state.time_requests[name] = user_times
                                     st.rerun()
@@ -861,6 +862,7 @@ else:
                             if is_off:
                                 if st.button("🔄 戻す", key=f"btn_off_{day}", use_container_width=True):
                                     prev_time = st.session_state.previous_times.get(name, {}).get(day, (9.0, 17.0))
+                                    st.session_state[f"time_{day}"] = (float_to_time_str(prev_time[0]), float_to_time_str(prev_time[1]))
                                     user_times[day] = prev_time
                                     st.session_state.time_requests[name] = user_times
                                     st.rerun()
@@ -869,7 +871,7 @@ else:
                                     if name not in st.session_state.previous_times:
                                         st.session_state.previous_times[name] = {}
                                     st.session_state.previous_times[name][day] = (curr_start, curr_end)
-                                    
+                                    st.session_state[f"time_{day}"] = (float_to_time_str(6.0), float_to_time_str(6.0))
                                     user_times[day] = (6.0, 6.0)
                                     st.session_state.time_requests[name] = user_times
                                     st.rerun()
