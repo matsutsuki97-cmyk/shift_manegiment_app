@@ -834,14 +834,51 @@ else:
         
         with tab1:
             st.title(f"{name} さんのシフト希望入力")
-            st.caption("毎週の「基本の出勤可能時間（月〜日）」を入力してください。")
+            
+            # ==========================================
+            # 📅 追加：週を選択するドロップダウン
+            # ==========================================
+            today = datetime.date.today()
+            this_monday = today - datetime.timedelta(days=today.weekday())
+            
+            week_options = {
+                f"今週 ({this_monday.strftime('%m/%d')}〜)": this_monday,
+                f"来週 ({(this_monday + datetime.timedelta(weeks=1)).strftime('%m/%d')}〜)": this_monday + datetime.timedelta(weeks=1),
+                f"再来週 ({(this_monday + datetime.timedelta(weeks=2)).strftime('%m/%d')}〜)": this_monday + datetime.timedelta(weeks=2),
+            }
+            
+            selected_week_label = st.selectbox("入力する週を選んでください", list(week_options.keys()))
+            target_monday = week_options[selected_week_label]
+            week_key = target_monday.strftime('%Y-%m-%d') # 金庫の引き出しの名前に使う（例: 2026-04-13）
+            # ==========================================
+
+            st.caption("選択した週の「出勤可能時間」を入力してください。")
             st.warning("⚠️ **【重要】** 来週のシフト希望は、必ず**今週の金曜日**までに提出してください！")
 
-            user_times = st.session_state.time_requests[name]
+            # --- データ保存先の形を「週ごと」にアップデート ---
+            if name not in st.session_state.time_requests:
+                st.session_state.time_requests[name] = {}
+            
+            # 古い形式のデータ（直接「月」「火」が入っている）の互換性対策
+            if "月" in st.session_state.time_requests[name]:
+                old_data = st.session_state.time_requests[name].copy()
+                st.session_state.time_requests[name] = {week_key: old_data}
+                
+            # 選んだ週のデータがまだ無ければ、初期値（例: 9:00〜17:00）を作る
+            if week_key not in st.session_state.time_requests[name]:
+                st.session_state.time_requests[name][week_key] = {d: (9.0, 17.0) for d in days}
+
+            # 選んだ週のデータを user_times に取り出す
+            user_times = st.session_state.time_requests[name][week_key]
 
             for i, day in enumerate(days):
+                # 📅 追加：ループの中でその曜日の日付を計算する
+                current_date = target_monday + datetime.timedelta(days=i)
+                date_str = current_date.strftime("%m/%d")
+
                 with st.container():
-                    st.markdown(f"**{day}曜日**")
+                    # 曜日と一緒に日付も表示する！
+                    st.markdown(f"**{day}曜日 ({date_str})**")
                     
                     curr_start, curr_end = tuple(user_times[day])
                     is_off = (curr_start == curr_end)
@@ -852,28 +889,28 @@ else:
                         btn_cols = st.columns(len(qbs) + 1)
                         for j, qb in enumerate(qbs):
                             with btn_cols[j]:
-                                if st.button(qb["name"], key=f"btn_{day}_{j}", use_container_width=True):
-                                    st.session_state[f"time_{day}"] = (float_to_time_str(qb["start"]), float_to_time_str(qb["end"]))
+                                if st.button(qb["name"], key=f"btn_{week_key}_{day}_{j}", use_container_width=True): # keyにweek_keyを追加して重複回避
+                                    st.session_state[f"time_{week_key}_{day}"] = (float_to_time_str(qb["start"]), float_to_time_str(qb["end"]))
                                     user_times[day] = (qb["start"], qb["end"])
-                                    st.session_state.time_requests[name] = user_times
+                                    st.session_state.time_requests[name][week_key] = user_times
                                     st.rerun()
                                     
                         with btn_cols[-1]:
                             if is_off:
-                                if st.button("🔄 戻す", key=f"btn_off_{day}", use_container_width=True):
+                                if st.button("🔄 戻す", key=f"btn_off_{week_key}_{day}", use_container_width=True):
                                     prev_time = st.session_state.previous_times.get(name, {}).get(day, (9.0, 17.0))
-                                    st.session_state[f"time_{day}"] = (float_to_time_str(prev_time[0]), float_to_time_str(prev_time[1]))
+                                    st.session_state[f"time_{week_key}_{day}"] = (float_to_time_str(prev_time[0]), float_to_time_str(prev_time[1]))
                                     user_times[day] = prev_time
-                                    st.session_state.time_requests[name] = user_times
+                                    st.session_state.time_requests[name][week_key] = user_times
                                     st.rerun()
                             else:
-                                if st.button("🛌 休み", key=f"btn_off_{day}", use_container_width=True):
+                                if st.button("🛌 休み", key=f"btn_off_{week_key}_{day}", use_container_width=True):
                                     if name not in st.session_state.previous_times:
                                         st.session_state.previous_times[name] = {}
                                     st.session_state.previous_times[name][day] = (curr_start, curr_end)
-                                    st.session_state[f"time_{day}"] = (float_to_time_str(6.0), float_to_time_str(6.0))
+                                    st.session_state[f"time_{week_key}_{day}"] = (float_to_time_str(6.0), float_to_time_str(6.0))
                                     user_times[day] = (6.0, 6.0)
-                                    st.session_state.time_requests[name] = user_times
+                                    st.session_state.time_requests[name][week_key] = user_times
                                     st.rerun()
                     
                     # --- マニュアル微調整スライダー ---
@@ -886,8 +923,8 @@ else:
                     sel_start, sel_end = st.select_slider(
                         "時間範囲", 
                         options=time_options,
-                        value=(start_str, end_str), 
-                        key=f"time_{day}",
+                        value=(st.session_state.get(f"time_{week_key}_{day}", (start_str, end_str))), # session_stateの値を優先
+                        key=f"time_{week_key}_{day}",
                         label_visibility="collapsed"
                     )
                     user_times[day] = (time_str_to_float(sel_start), time_str_to_float(sel_end))
@@ -896,9 +933,10 @@ else:
             
             st.write("") 
             if st.button("基本希望を保存して提出", use_container_width=True, type="primary"):
-                st.session_state.time_requests[name] = user_times
+                # 選んだ週(week_key)の中にデータを保存する！
+                st.session_state.time_requests[name][week_key] = user_times
                 save_data() 
-                st.success("シフト希望を管理者に提出し、データが保存されました！")
+                st.success(f"✅ {selected_week_label} のシフト希望を提出し、データが保存されました！")
 
         with tab2:
             st.title(f"📅 {name} さんの月別タイムカード")
