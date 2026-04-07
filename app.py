@@ -514,113 +514,97 @@ else:
                 st.subheader("✂️ 手動での最終微調整")
                 st.caption("AIが作成したシフトをベースに、さらに店長が微調整できます。")
                 
-                if chart_data:
-                    for d in chart_data:
-                        name = d["スタッフ名"]
-                        user_data_489 = st.session_state.time_requests.get(name, {})
+                # 💡 chart_data（グラフ表示者）ではなく、全スタッフの名前でループを回す
+                # これにより、特定のスタッフでエラーが起きても他のスタッフが表示されるようになります
+                for name in st.session_state.employees["名前"]:
+                    try:
+                        # --- 1. データの準備（週対応） ---
+                        user_all_reqs = st.session_state.time_requests.get(name, {})
+                        target_monday = target_date - datetime.timedelta(days=target_date.weekday())
+                        week_key = target_monday.strftime('%Y-%m-%d')
+                        
+                        # 指定週のデータを取得
+                        week_data = user_all_reqs.get(week_key, {})
+                        if not week_data and user_all_reqs:
+                            # 辞書形式なら最新の週を、そうでなければ全体を
+                            latest_key = list(user_all_reqs.keys())[-1]
+                            week_data = user_all_reqs[latest_key] if isinstance(user_all_reqs[latest_key], dict) else user_all_reqs
+                        
+                        # 曜日ごとの希望時間を取得（データなしは 6.0, 6.0）
+                        req_start, req_end = week_data.get(base_day, (6.0, 6.0))
+                        
+                        # 休みのスタッフは調整スライダーを出さない
+                        if name in st.session_state.daily_removed_staff[date_str] or req_start == req_end:
+                            continue
 
-                        if user_data_489:
-                            if "月" in user_data_489:
-                                req_start, req_end = tuple(user_data_489.get(base_day, (6.0, 6.0)))
-                            else:
-                                # 新しい形式の場合、一番新しく提出された「最新の週」のデータを取り出す
-                                latest_week = list(user_data_489.keys())[-1]
-                                req_start, req_end = tuple(user_data_489[latest_week].get(base_day, (6.0, 6.0)))
-                        else:
-                            # データが何もない場合は休み（6.0, 6.0）扱いにする
-                            req_start, req_end = (6.0, 6.0)
+                        # 調整後の現在の値を取得
+                        day_adjustments = st.session_state.daily_adjusted_times.get(date_str, {})
+                        adj_start, adj_end = tuple(day_adjustments.get(name, (req_start, req_end)))
 
+                        # --- 2. スライダーの表示 ---
                         with st.container():
-                            # 1. まず名前を表示（ここまでは絶対に出るはず）
-                            st.markdown(f"**{name}**")
+                            st.markdown(f"**{name}** (希望: {float_to_time_str(req_start)} 〜 {float_to_time_str(req_end)})")
                             
-                            # 2. 安全な変換関数
-                            def to_slider_str(f):
-                                try:
-                                    h = int(f)
-                                    m = int((f - h) * 60)
-                                    return f"{h}:{m:02d}"
-                                except:
-                                    return "9:00" # 失敗したら適当な時間を返す
+                            # 文字列に変換
+                            req_s_str, req_e_str = to_slider_str(req_start), to_slider_str(req_end)
+                            adj_s_str, adj_e_str = to_slider_str(adj_start), to_slider_str(adj_end)
 
-                            req_s_str = to_slider_str(req_start)
-                            req_e_str = to_slider_str(req_end)
-                            
-                            # 3. リストから位置を探す（ここが一番の鬼門）
-                            # time_options の中に本当にその文字があるか超厳密にチェック
                             if req_s_str in time_options and req_e_str in time_options:
-                                idx_start = time_options.index(req_s_str)
-                                idx_end = time_options.index(req_e_str)
-                                valid_options = time_options[idx_start : idx_end+1]
-                            else:
-                                # 見つからなければ、スライダーを出さずに「範囲外」として扱う
-                                valid_options = []
-
-                            # 4. スライダーを表示（中身があるときだけ）
-                            if len(valid_options) > 1:
-                                adj_s_str = to_slider_str(adj_start)
-                                adj_e_str = to_slider_str(adj_end)
+                                idx_s = time_options.index(req_s_str)
+                                idx_e = time_options.index(req_e_str)
+                                valid_options = time_options[idx_s : idx_e+1]
                                 
-                                final_adj_s = adj_s_str if adj_s_str in valid_options else req_s_str
-                                final_adj_e = adj_e_str if adj_e_str in valid_options else req_e_str
-                                
-                                try:
+                                if len(valid_options) > 1:
+                                    # ガードレール：現在の調整値が選択肢にない場合は希望時間に合わせる
+                                    final_s = adj_s_str if adj_s_str in valid_options else req_s_str
+                                    final_e = adj_e_str if adj_e_str in valid_options else req_e_str
+                                    
                                     new_adj_str = st.select_slider(
-                                        "時間調整", 
-                                        options=valid_options, 
-                                        value=(final_adj_s, final_adj_e), 
-                                        key=f"slider_final_{date_str}_{name}", # keyを変えて古い記憶を消す
-                                        label_visibility="collapsed"
+                                        "時間調整", options=valid_options, value=(final_s, final_e),
+                                        key=f"adj_vFinal_{date_str}_{name}", label_visibility="collapsed"
                                     )
-                                    # 保存処理
+                                    
+                                    # 保存と更新
                                     new_adj = (time_str_to_float(new_adj_str[0]), time_str_to_float(new_adj_str[1]))
                                     if new_adj != (adj_start, adj_end):
                                         st.session_state.daily_adjusted_times[date_str][name] = new_adj
                                         save_data()
                                         st.rerun()
-                                except Exception as e:
-                                    st.error(f"スライダー表示エラー: {name}")
-                            else:
-                                # 💡 ここが大事：スライダーが出せなくても、情報を出して処理を止めない
-                                st.info(f"希望時間: {req_s_str} 〜 {req_e_str} (調整不可)")
-
-                            # 5. 【重要】if の外に出す！これでボタンとExcelが復活する
-                            if st.button(f"❌ 休みに変更", key=f"remove_v2_{date_str}_{name}", use_container_width=True):
-                                if name not in st.session_state.daily_removed_staff[date_str]:
-                                    st.session_state.daily_removed_staff[date_str].append(name)
-                                save_data() 
-                                st.rerun()
+                                else:
+                                    st.info("固定シフトのため調整不可")
                             
+                            # 個別の「休みに変更」ボタン
+                            if st.button(f"❌ {name}を休みに変更", key=f"rem_btn_{date_str}_{name}", use_container_width=True):
+                                st.session_state.daily_removed_staff[date_str].append(name)
+                                save_data()
+                                st.rerun()
                             st.divider()
-                else:
-                    st.write("調整できるスタッフがいません。")
 
-                # --- 休みのスタッフを戻すエリア ---
+                    except Exception as e:
+                        # 誰か一人でエラーが起きても、この一人だけスキップして次のスタッフへ進む
+                        st.error(f"⚠️ {name}さんの調整データに不備があります")
+                        continue
+
+                # --- 3. 休みのスタッフを戻すエリア（週対応版） ---
                 if st.session_state.daily_removed_staff[date_str]:
+                    st.write("---")
                     st.subheader("↩️ 休みのスタッフを戻す")
                     for name in st.session_state.daily_removed_staff[date_str]:
-                        
-                        # 1. その人の本来の希望時間を取得
-                        req_s, req_e = st.session_state.time_requests[name][base_day]
-                        
-                        # 2. 時間を「10:00」の形に分かりやすく変換
-                        if req_s < req_e:
-                            s_str = f"{int(req_s)}:{int((req_s % 1) * 60):02d}"
-                            e_str = f"{int(req_e)}:{int((req_e % 1) * 60):02d}"
-                            btn_label = f"➕ {name} （希望: {s_str} 〜 {e_str}） を出勤させる"
-                        else:
-                            btn_label = f"➕ {name} （希望: 休み） を出勤させる"
-
-                        # 3. ボタンを表示！
-                        if st.button(btn_label, key=f"restore_{date_str}_{name}", use_container_width=True):
-                            # ★注意：グラフに復活させるために、調整後シフト（daily_adjusted_times）にも時間を戻してあげます！
-                            st.session_state.daily_adjusted_times[date_str][name] = [req_s, req_e]
+                        try:
+                            u_reqs = st.session_state.time_requests.get(name, {})
+                            t_monday = target_date - datetime.timedelta(days=target_date.weekday())
+                            w_key = t_monday.strftime('%Y-%m-%d')
+                            w_data = u_reqs.get(w_key, u_reqs.get(list(u_reqs.keys())[-1], {}))
+                            r_s, r_e = w_data.get(base_day, (6.0, 6.0))
                             
-                            # 休みのリストから削除
-                            st.session_state.daily_removed_staff[date_str].remove(name)
-                            save_data() 
-                            st.rerun()
-
+                            btn_label = f"➕ {name} を出勤させる" + (f" (希望: {float_to_time_str(r_s)}〜)" if r_s < r_e else "")
+                            if st.button(btn_label, key=f"restore_btn_{date_str}_{name}", use_container_width=True):
+                                st.session_state.daily_adjusted_times[date_str][name] = [r_s, r_e]
+                                st.session_state.daily_removed_staff[date_str].remove(name)
+                                save_data()
+                                st.rerun()
+                        except:
+                            continue
             st.divider()
             st.subheader(f"📥 {date_str} の1日分 Excel出力")
             st.caption("完成したシフトを、15分刻みの詳細なExcelとしてダウンロードできます。")
