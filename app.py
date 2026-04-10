@@ -9,6 +9,8 @@ import datetime
 import jpholiday
 import firebase_admin
 from firebase_admin import credentials, firestore
+import pyrebase
+import bcrypt
 
 # --- ★PyTorchモデルの読み込み ---
 try:
@@ -23,7 +25,16 @@ except Exception as e:
     PYTORCH_AVAILABLE = False
     st.error(f"PyTorchモデルの読み込みに失敗しました。ファイル名やコードを確認してください: {e}")
     
-    
+def hash_password(password):
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+def check_password(input_password, stored_hash):
+    try:
+        return bcrypt.checkpw(input_password.encode('utf-8'), stored_hash.encode('utf-8'))
+    except EXception:
+        return False
 
 # --- 1. ページ設定 ---
 st.set_page_config(page_title="AIシフト管理（PyTorch最適化対応）", layout="wide")
@@ -42,6 +53,17 @@ if not firebase_admin._apps:
 
 # データベース（Firestore）の操作用オブジェクト
 db = firestore.client()
+
+auth_config = {
+    "apiKey": st.secrets["firebase"]["api_key"],
+    "authDomain": st.secrets["firebase"]["auth_domain"],
+    "projectId": st.secrets["firebase"]["project_id"],
+    "storageBucket": st.secrets["firebase"]["storage_bucket"],
+    "messagingSenderId": st.secrets["firebase"]["messaging_sender_id"],
+    "appId": st.secrets["firebase"]["app_id"]
+}
+firebase = pyrebase.initialize_app(auth_config)
+auth = firebase.auth()
 
 # =========================================================
 # 15分単位の時間を扱うための便利ツール
@@ -170,21 +192,28 @@ if not st.session_state.logged_in:
             submitted = st.form_submit_button("ログイン")
             
             if submitted:
-                if username == st.session_state.admin_id and password == st.session_state.admin_password:
-                    st.session_state.logged_in = True
-                    st.session_state.current_user = "admin"
-                    st.rerun()
-                else:
-                    match = st.session_state.employees[
-                        (st.session_state.employees["ID"] == username) & 
-                        (st.session_state.employees["パスワード"] == password)
-                    ]
-                    if not match.empty:
+                if "@" in username:
+                    try:
+                        user = auth.sigh_in_with_email_and_password(username, password)
                         st.session_state.logged_in = True
-                        st.session_state.current_user = match["名前"].values[0]
+                        st.session_state.current_user = "admin"
                         st.rerun()
+                    except Exception as e:
+                        st.error("認証に失敗しました。")
+                else:
+                    if username.lower() == "admin":
+                        st.error("このIDは使用できません。")
                     else:
-                        st.error("IDまたはパスワードが間違っています。")
+                        match = st.session_state.employees[
+                            (st.session_state.employees["ID"] == username) & 
+                            (st.session_state.employees["パスワード"] == password)
+                        ]
+                        if not match.empty:
+                            st.session_state.logged_in = True
+                            st.session_state.current_user = match["名前"].values[0]
+                            st.rerun()
+                        else:
+                            st.error("IDまたはパスワードが間違っています。")
 
 # =========================================================
 # ログイン成功後の画面
