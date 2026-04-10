@@ -1,8 +1,13 @@
-streamlit
+streamlit>=1.31.0
 pandas
-firebase-admin
 jpholiday
 plotly
-pandas
 torch
 openpyxl
+firebase-admin
+pyrebase4
+bcrypt
+passlib
+pillow>=10.2.0
+requests>=2.31.0
+filelock>=3.12.0
