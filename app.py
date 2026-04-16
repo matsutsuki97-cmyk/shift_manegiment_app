@@ -61,7 +61,7 @@ auth_config = {
     "storageBucket": st.secrets["firebase"]["storage_bucket"],
     "messagingSenderId": st.secrets["firebase"]["messaging_sender_id"],
     "appId": st.secrets["firebase"]["app_id"],
-    "database_url" : "https://makeshift-aa656-default-rtdb.firebaseio.com"
+    "databaseURL" : "https://makeshift-aa656-default-rtdb.firebaseio.com"
 }
 firebase = pyrebase.initialize_app(auth_config)
 auth = firebase.auth()
