@@ -86,10 +86,29 @@ time_options = [f"{h}:{m:02d}" for h in range(6, 26) for m in (0, 15, 30, 45) if
 # セーブ機能 (Firebase版)
 # =========================================================
 def save_data():
+    # 1. 現在のスタッフデータをコピーして編集用にする
+    df = st.session_state.employees.copy()
+
+    # 2. 各行のパスワードをチェックし、ハッシュ化されていなければハッシュ化する
+    def ensure_hashed(pw):
+        pw_str = str(pw)
+        # すでにハッシュ化済み（bcrypt特有の$2b$などで始まる）ならそのまま
+        if pw_str.startswith("$2b$") or pw_str.startswith("$2a$"):
+            return pw_str
+        # 生の文字ならハッシュ化
+        return hash_password(pw_str)
+
+    # パスワード列を一括処理
+    df["パスワード"] = df["パスワード"].apply(ensure_hashed)
+    
+    # 画面上の表示（session_state）もハッシュ化済みのものに更新しておく
+    st.session_state.employees = df
+
+    # 3. Firestoreに保存するデータを作成
     data_to_save = {
         "admin_id": st.session_state.admin_id,
         "admin_password": st.session_state.admin_password,
-        "employees": st.session_state.employees.to_dict(orient="records"),
+        "employees": df.to_dict(orient="records"), # ハッシュ化したデータを渡す
         "time_requests": st.session_state.time_requests, 
         "daily_adjusted_times": st.session_state.daily_adjusted_times, 
         "daily_removed_staff": st.session_state.daily_removed_staff,   
@@ -101,8 +120,9 @@ def save_data():
         "previous_times": st.session_state.previous_times
     }
     
-    # Firestoreの "shift_management" コレクションの "main_data" というドキュメントに保存
+    # Firestoreのドキュメントを更新
     db.collection("shift_management").document("main_data").set(data_to_save)
+    st.success("データを安全に保存しました。")
 
 # --- 2. データ保持（オートロード） ---
 days = ["月", "火", "水", "木", "金", "土", "日"]
@@ -255,24 +275,6 @@ else:
             date_str = target_date.strftime("%Y/%m/%d")
             base_day = days[target_date.weekday()]
             holiday_name = jpholiday.is_holiday_name(target_date)
-
-            if st.button("🚨 全スタッフのパスワードをハッシュ化（一回だけ実行）"):
-                # 現在のスタッフデータをコピー
-                df = st.session_state.employees.copy()
-                
-                # 全員のパスワードをハッシュ化して上書き
-                # すでにハッシュ化されている（$2b$で始まる）場合はスルーするようにガード
-                def safe_hash(pw):
-                    if str(pw).startswith("$2b$"): 
-                        return pw
-                    return hash_password(str(pw))
-                
-                df["パスワード"] = df["パスワード"].apply(safe_hash)
-                
-                # セッションとFirestoreを更新
-                st.session_state.employees = df
-                save_data()
-                st.success("全スタッフのパスワードをハッシュ化して保存しました！もうこのボタンは不要です。")
                         
             if date_str not in st.session_state.daily_adjusted_times:
                 st.session_state.daily_adjusted_times[date_str] = {}
