@@ -205,14 +205,20 @@ if not st.session_state.logged_in:
                     if username.lower() == "admin":
                         st.error("このIDは使用できません。")
                     else:
-                        match = st.session_state.employees[
-                            (st.session_state.employees["ID"] == username) & 
-                            (st.session_state.employees["パスワード"] == password)
-                        ]
-                        if not match.empty:
-                            st.session_state.logged_in = True
-                            st.session_state.current_user = match["名前"].values[0]
-                            st.rerun()
+                        user_row = st.session_state.employees[st.session_state.employees["ID"] == username]
+                    
+                        if not user_row.empty:
+                            # 2. そのユーザーの「保存されているハッシュ値」を取り出す
+                            stored_hash = user_row["パスワード"].values[0]
+                            
+                            # 3. 入力されたパスワードとハッシュ値を検証する
+                            # (既存の check_password 関数を使用)
+                            if check_password(password, stored_hash):
+                                st.session_state.logged_in = True
+                                st.session_state.current_user = user_row["名前"].values[0]
+                                st.rerun()
+                            else:
+                                st.error("IDまたはパスワードが間違っています。")
                         else:
                             st.error("IDまたはパスワードが間違っています。")
 
@@ -249,7 +255,25 @@ else:
             date_str = target_date.strftime("%Y/%m/%d")
             base_day = days[target_date.weekday()]
             holiday_name = jpholiday.is_holiday_name(target_date)
-            
+
+            if st.button("🚨 全スタッフのパスワードをハッシュ化（一回だけ実行）"):
+                # 現在のスタッフデータをコピー
+                df = st.session_state.employees.copy()
+                
+                # 全員のパスワードをハッシュ化して上書き
+                # すでにハッシュ化されている（$2b$で始まる）場合はスルーするようにガード
+                def safe_hash(pw):
+                    if str(pw).startswith("$2b$"): 
+                        return pw
+                    return hash_password(str(pw))
+                
+                df["パスワード"] = df["パスワード"].apply(safe_hash)
+                
+                # セッションとFirestoreを更新
+                st.session_state.employees = df
+                save_data()
+                st.success("全スタッフのパスワードをハッシュ化して保存しました！もうこのボタンは不要です。")
+                        
             if date_str not in st.session_state.daily_adjusted_times:
                 st.session_state.daily_adjusted_times[date_str] = {}
                 
