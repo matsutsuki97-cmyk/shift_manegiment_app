@@ -1,4 +1,14 @@
 streamlit
-pandas
-bcrypt
+pandas>=2.0.0
+jpholiday
+plotly
+torch
+openpyxl
+firebase-admin
 pyrebase4
+bcrypt
+passlib
+pillow
+requests
+filelock
+
