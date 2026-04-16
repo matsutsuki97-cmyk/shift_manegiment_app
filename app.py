@@ -123,6 +123,7 @@ def save_data():
     # Firestoreのドキュメントを更新
     db.collection("shift_management").document("main_data").set(data_to_save)
     st.success("データを安全に保存しました。")
+    st.rerun()
 
 # --- 2. データ保持（オートロード） ---
 days = ["月", "火", "水", "木", "金", "土", "日"]
