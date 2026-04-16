@@ -33,7 +33,7 @@ def hash_password(password):
 def check_password(input_password, stored_hash):
     try:
         return bcrypt.checkpw(input_password.encode('utf-8'), stored_hash.encode('utf-8'))
-    except EXception:
+    except Exception:
         return False
 
 # --- 1. ページ設定 ---
@@ -195,7 +195,7 @@ if not st.session_state.logged_in:
             if submitted:
                 if "@" in username:
                     try:
-                        user = auth.sigh_in_with_email_and_password(username, password)
+                        user = auth.sign_in_with_email_and_password(username, password)
                         st.session_state.logged_in = True
                         st.session_state.current_user = "admin"
                         st.rerun()
