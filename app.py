@@ -106,8 +106,6 @@ def save_data():
 
     # 3. Firestoreに保存するデータを作成
     data_to_save = {
-        "admin_id": st.session_state.admin_id,
-        "admin_password": st.session_state.admin_password,
         "employees": df.to_dict(orient="records"), # ハッシュ化したデータを渡す
         "time_requests": st.session_state.time_requests, 
         "daily_adjusted_times": st.session_state.daily_adjusted_times, 
