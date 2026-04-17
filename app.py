@@ -782,7 +782,15 @@ else:
                     wish_count = 0
                     wish_hours = 0.0
                     for day, times in req_days.items():
-                        start, end = times
+                        # データがリストやタプルで、かつ要素が2つの時だけ処理する
+                        if isinstance(times, (list, tuple)) and len(times) == 2:
+                            start, end = times
+                            if start < end:
+                                wish_count += 1
+                                wish_hours += (end - start)
+                        else:
+                            # 想定外のデータ（空など）が入っていたらスキップ
+                            continue
                         if start < end:
                             wish_count += 1
                             wish_hours += (end - start)
