@@ -771,40 +771,54 @@ else:
             )
             def display_participation_summary():
                 st.subheader("📅 今週の勤務状況サマリー")
+                
+                # 1. 基準日をパース
                 base_date = datetime.datetime.strptime(date_str, "%Y/%m/%d")
-                target_week_days = []
+                
+                # 2. 0あり・0なし両方のパターンをリストに含めてしまう（マッチングの網を広げる）
+                target_week_days_padded = [] # "2026/04/17" 形式
+                target_week_days_simple = [] # "2026/4/17" 形式
+                
                 for i in range(7):
                     d = base_date + datetime.timedelta(days=i)
-                    # "2026/4/5" のような形式（0埋めなし）で作る
-                    formatted_day = f"{d.year}/{d.month}/{d.day}"
-                    target_week_days.append(formatted_day)
+                    target_week_days_padded.append(d.strftime("%Y/%m/%d"))
+                    target_week_days_simple.append(f"{d.year}/{d.month}/{d.day}")
+                
                 summary_data = []
                 
                 for _, row in st.session_state.employees.iterrows():
                     name = row["名前"]
-                    
-                    # --- 1. 希望（日数・時間）の集計 ---
                     req_days = st.session_state.time_requests.get(name, {})
-                    wish_count = 0
-                    wish_hours = 0.0
-                    for day in target_week_days:  # 全データではなく、その週の7日間でループ
-                        times = req_days.get(day)
+                    
+                    wish_count, wish_hours = 0, 0.0
+                    active_count, active_hours = 0, 0.0
+                    
+                    # 3. 7日間分ループ
+                    for i in range(7):
+                        day_padded = target_week_days_padded[i]
+                        day_simple = target_week_days_simple[i]
+                        
+                        # --- 希望の集計 ---
+                        # 0あり、0なし両方のキーで探し、ある方を採用する
+                        times = req_days.get(day_padded) or req_days.get(day_simple)
+                        
                         if isinstance(times, (list, tuple)) and len(times) == 2:
                             s, e = times
                             if s < e:
                                 wish_count += 1
                                 wish_hours += (e - s)
-                    
-                    # --- 2. 採用（その週の7日間だけ） ---
-                    active_count, active_hours = 0, 0.0
-                    for day in target_week_days:
-                        shifts = st.session_state.daily_adjusted_times.get(day, {})
+                        
+                        # --- 採用の集計 ---
+                        # 確定データも同様に両方の形式でチェック
+                        shifts = st.session_state.daily_adjusted_times.get(day_padded, {})
+                        if not shifts: # 0ありでなければ0なしで探す
+                            shifts = st.session_state.daily_adjusted_times.get(day_simple, {})
+                            
                         if name in shifts:
                             active_count += 1
                             s, e = shifts[name]
                             active_hours += (e - s)
                     
-                    # --- 3. データ整形 ---
                     summary_data.append({
                         "スタッフ名": name,
                         "出勤 / 希望 (日)": f"{active_count} / {wish_count}",
@@ -813,12 +827,9 @@ else:
                     })
                 
                 if summary_data:
-                    df_summary = pd.DataFrame(summary_data)
-                    # 表の見た目を整える（indexを隠してスッキリさせる）
-                    st.dataframe(df_summary, use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(summary_data), use_container_width=True, hide_index=True)
                 else:
                     st.info("集計するデータがまだありません。")
-            display_participation_summary()
 
         elif mode == "🤖 AI設定":
             st.title("🤖 必要人数 ＆ 必要平均レベルの設定")
