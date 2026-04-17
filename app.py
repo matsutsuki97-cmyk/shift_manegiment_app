@@ -706,10 +706,8 @@ else:
                             st.divider()
 
                     except Exception as e:
-                        # 誰か一人でエラーが起きても、この一人だけスキップして次のスタッフへ進む
-                        st.error(f"⚠️ {name}さんの不備内容: {e}")
-                        # 💡 さらに詳しく、今何のデータを探しているか表示する
-                        # st.write(f"検索キー: {week_key} / 曜日: {base_day}")
+                        st.error(f"⚠️ {name}さんのシフト計算中にエラーが発生しました。")
+                        print(f"DEBUG: AI Score Error for {name}: {e}")
                         continue
 
                 # --- 3. 休みのスタッフを戻すエリア（見える化版） ---
