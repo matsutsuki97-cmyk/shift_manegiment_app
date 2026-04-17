@@ -767,6 +767,47 @@ else:
                 file_name=f"shift_{date_str.replace('/','')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+            def display_participation_summary():
+                st.subheader("📅 今週の勤務状況サマリー")
+                
+                summary_data = []
+                
+                for _, row in st.session_state.employees.iterrows():
+                    name = row["名前"]
+                    
+                    # --- 1. 希望（日数・時間）の集計 ---
+                    req_days = st.session_state.time_requests.get(name, {})
+                    wish_count = 0
+                    wish_hours = 0.0
+                    for day, times in req_days.items():
+                        start, end = times
+                        if start < end:
+                            wish_count += 1
+                            wish_hours += (end - start)
+                    
+                    # --- 2. 採用（日数・時間）の集計 ---
+                    active_count = 0
+                    active_hours = 0.0
+                    for day, shifts in st.session_state.daily_adjusted_times.items():
+                        if name in shifts:
+                            active_count += 1
+                            start, end = shifts[name]
+                            active_hours += (end - start)
+                    
+                    # --- 3. データ整形 ---
+                    summary_data.append({
+                        "スタッフ名": name,
+                        "出勤 / 希望 (日)": f"{active_count} / {wish_count}",
+                        "採用 / 希望 (時間)": f"{active_hours:.1f} / {wish_hours:.1f}",
+                        "今週の給与目安": f"¥{int(active_hours * row.get('時給', 0)):,}" # ついでに給与目安も
+                    })
+                
+                if summary_data:
+                    df_summary = pd.DataFrame(summary_data)
+                    # 表の見た目を整える（indexを隠してスッキリさせる）
+                    st.dataframe(df_summary, use_container_width=True, hide_index=True)
+                else:
+                    st.info("集計するデータがまだありません。")
 
         elif mode == "🤖 AI設定":
             st.title("🤖 必要人数 ＆ 必要平均レベルの設定")
