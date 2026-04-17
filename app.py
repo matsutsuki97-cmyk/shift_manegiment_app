@@ -772,7 +772,12 @@ else:
             def display_participation_summary():
                 st.subheader("📅 今週の勤務状況サマリー")
                 base_date = datetime.datetime.strptime(date_str, "%Y/%m/%d")
-                target_week_days = [(base_date + datetime.timedelta(days=i)).strftime("%Y/%m/%d") for i in range(7)]
+                target_week_days = []
+                for i in range(7):
+                    d = base_date + datetime.timedelta(days=i)
+                    # "2026/4/5" のような形式（0埋めなし）で作る
+                    formatted_day = f"{d.year}/{d.month}/{d.day}"
+                    target_week_days.append(formatted_day)
                 summary_data = []
                 
                 for _, row in st.session_state.employees.iterrows():
