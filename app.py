@@ -939,17 +939,6 @@ else:
 
         elif mode == "店舗設定":
             st.title("🔧 管理者画面：店舗・アカウント設定")
-            st.subheader("🔑 管理者ログイン情報の設定")
-            new_admin_id = st.text_input("管理者ID", value=st.session_state.admin_id)
-            new_admin_pass = st.text_input("管理者パスワード", value=st.session_state.admin_password, type="password")
-            
-            if st.button("管理者情報を更新する"):
-                st.session_state.admin_id = new_admin_id
-                st.session_state.admin_password = new_admin_pass
-                save_data()
-                st.success("管理者IDとパスワードを更新しました！次回からこの情報でログインしてください。")
-            
-            st.divider()
 
             st.subheader("⚡ 曜日ごとのクイック入力ボタンのカスタマイズ")
             st.caption("スタッフが各曜日でポンッと押せる「よくあるシフト時間」を追加・削除できます。")
