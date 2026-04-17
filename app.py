@@ -830,6 +830,8 @@ else:
                     st.dataframe(pd.DataFrame(summary_data), use_container_width=True, hide_index=True)
                 else:
                     st.info("集計するデータがまだありません。")
+            st.divider() # 区切り線
+            display_participation_summary()
 
         elif mode == "🤖 AI設定":
             st.title("🤖 必要人数 ＆ 必要平均レベルの設定")
