@@ -1208,7 +1208,7 @@ else:
                     times = user_times[day]
                     st.session_state.time_requests[name][d_str] = times
                 save_staff_data(name)
-                st.success(f"✅ {selected_week_label} の希望を「日付ごと」に提出しました！") 
+                st.success(f"✅ {selected_week_label} の希望を提出しました！") 
 
         with tab2:
             st.title(f"📅 {name} さんの月別タイムカード")
