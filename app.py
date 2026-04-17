@@ -129,6 +129,10 @@ def save_data():
 days = ["月", "火", "水", "木", "金", "土", "日"]
 req_days = ["月", "火", "水", "木", "金", "土", "日", "祝"]
 
+# ログイン試行回数の初期化（ブルートフォース対策）
+if 'login_attempts' not in st.session_state:
+    st.session_state.login_attempts = 0
+
 if 'employees' not in st.session_state:
     doc_ref = db.collection("shift_management").document("main_data")
     doc = doc_ref.get()
@@ -136,16 +140,14 @@ if 'employees' not in st.session_state:
     if doc.exists:
         loaded_data = doc.to_dict()
         
-        st.session_state.admin_id = loaded_data.get("admin_id", "admin")
-        st.session_state.admin_password = loaded_data.get("admin_password", "admin")
-        df_emp = pd.DataFrame(loaded_data["employees"])
-        if "時給" not in df_emp.columns:
-            df_emp["時給"] = 1000
+        # Firestoreのデータをそのまま読み込む
+        df_emp = pd.DataFrame(loaded_data.get("employees", []))
             
         st.session_state.employees = df_emp
-        st.session_state.time_requests = loaded_data["time_requests"]
-        st.session_state.work_records = loaded_data.get("work_records", {name: [] for name in df_emp["名前"]})
+        st.session_state.time_requests = loaded_data.get("time_requests", {})
+        st.session_state.work_records = loaded_data.get("work_records", {name: [] for name in df_emp["名前"]} if not df_emp.empty else {})
         
+        # 必要な人数の構造維持
         saved_req = loaded_data.get("required_staff", {})
         if "祝" not in saved_req:
             saved_req["祝"] = {str(h): 2 for h in range(6, 25)}
@@ -158,42 +160,26 @@ if 'employees' not in st.session_state:
         st.session_state.daily_removed_staff = loaded_data.get("daily_removed_staff", {})
         st.session_state.special_required_staff = loaded_data.get("special_required_staff", {})
         st.session_state.previous_times = loaded_data.get("previous_times", {}) 
-        
-        if "quick_buttons" in loaded_data:
-            st.session_state.quick_buttons = loaded_data["quick_buttons"]
-        else:
-            st.session_state.quick_buttons = [
-                {"name": "🌅 早番", "start": 9.0, "end": 17.0},
-                {"name": "🌙 中番", "start": 17.0, "end": 21.0},
-                {"name": "🕛 中遅", "start": 17.0, "end": 25.0},
-                {"name": "🦉 遅番", "start": 21.0, "end": 25.0}
-            ]
+        st.session_state.quick_buttons = loaded_data.get("quick_buttons", [])
 
     else:
-        st.session_state.admin_id = "admin"
-        st.session_state.admin_password = "admin"
-        st.session_state.employees = pd.DataFrame([
-            {"名前": f"スタッフ{i+1}", "ID": f"staff{i+1}", "パスワード": "1234", "レベル": 2, "時給": 1000, "累計出勤": 0} 
-            for i in range(20)
-        ])
-        st.session_state.time_requests = {f"スタッフ{i+1}": {day: (9.0, 24.0) for day in days} for i in range(20)}
-        st.session_state.work_records = {f"スタッフ{i+1}": [] for i in range(20)}
+        # 初回起動時（Firestoreが空の場合）
+        st.session_state.employees = pd.DataFrame(columns=["名前", "ID", "パスワード", "レベル", "時給", "累計出勤"])
+        st.session_state.time_requests = {}
+        st.session_state.work_records = {}
         st.session_state.required_staff = {day: {str(h): 2 for h in range(6, 25)} for day in req_days} 
         
         st.session_state.daily_adjusted_times = {}
         st.session_state.daily_removed_staff = {}
         st.session_state.special_required_staff = {}
         st.session_state.previous_times = {} 
-        st.session_state.quick_buttons = [
-            {"name": "早番", "start": 9.0, "end": 17.0},
-            {"name": "中番", "start": 17.0, "end": 21.0},
-            {"name": "中遅", "start": 17.0, "end": 25.0},
-            {"name": "遅番", "start": 21.0, "end": 25.0}
-        ]
+        st.session_state.quick_buttons = []
 
+# --- 3. ログイン状態の初期化 ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.current_user = None
+    st.session_state.is_admin = False # ✅ これが管理者画面への「鍵」になります
 
 # =========================================================
 # ログイン画面
@@ -208,40 +194,60 @@ if not st.session_state.logged_in:
         * スタッフ ➔ 各自に設定されたIDとパスワード
         """)
         
+        # 💡 ロック状態の警告表示
+        if st.session_state.login_attempts >= 5:
+            st.error("🚨 ログインに5回失敗したため、セキュリティロックがかかっています。")
+            st.info("💡 ロックを解除するには、ブラウザを更新（リロード）してください。")
+
         with st.form("login_form"):
-            username = st.text_input("ユーザーID")
+            username = st.text_input("ユーザーID / メールアドレス")
             password = st.text_input("パスワード", type="password")
             submitted = st.form_submit_button("ログイン")
             
             if submitted:
-                if "@" in username:
+                # 1. 試行回数チェック（5回以上なら処理しない）
+                if st.session_state.login_attempts >= 5:
+                    st.error("ロック中です。リロードしてやり直してください。")
+                
+                # 2. 管理者ログイン（メールアドレス形式）
+                elif "@" in username:
                     try:
                         user = auth.sign_in_with_email_and_password(username, password)
-                        st.session_state.logged_in = True
-                        st.session_state.current_user = "admin"
-                        st.rerun()
-                    except Exception as e:
-                        st.error("認証に失敗しました。")
-                else:
-                    if username.lower() == "admin":
-                        st.error("このIDは使用できません。")
-                    else:
-                        user_row = st.session_state.employees[st.session_state.employees["ID"] == username]
-                    
-                        if not user_row.empty:
-                            # 2. そのユーザーの「保存されているハッシュ値」を取り出す
-                            stored_hash = user_row["パスワード"].values[0]
-                            
-                            # 3. 入力されたパスワードとハッシュ値を検証する
-                            # (既存の check_password 関数を使用)
-                            if check_password(password, stored_hash):
-                                st.session_state.logged_in = True
-                                st.session_state.current_user = user_row["名前"].values[0]
-                                st.rerun()
-                            else:
-                                st.error("IDまたはパスワードが間違っています。")
+                        uid = user['localId']
+                        
+                        # SecretsのUIDと照合
+                        if uid == st.secrets["admin"]["uid"]:
+                            st.session_state.logged_in = True
+                            st.session_state.is_admin = True  # ✅ フラグをセット
+                            st.session_state.current_user = "店長"
+                            st.session_state.login_attempts = 0 # 成功でリセット
+                            st.rerun()
                         else:
-                            st.error("IDまたはパスワードが間違っています。")
+                            st.session_state.login_attempts += 1
+                            st.error(f"管理者権限がありません。(残り {5 - st.session_state.login_attempts} 回)")
+                    except Exception as e:
+                        st.session_state.login_attempts += 1
+                        st.error(f"認証に失敗しました。(残り {5 - st.session_state.login_attempts} 回)")
+                
+                # 3. スタッフログイン（ID形式）
+                else:
+                    user_row = st.session_state.employees[st.session_state.employees["ID"] == username]
+                    
+                    if not user_row.empty:
+                        stored_hash = user_row["パスワード"].values[0]
+                        # パスワード検証
+                        if check_password(password, stored_hash):
+                            st.session_state.logged_in = True
+                            st.session_state.is_admin = False # ✅ スタッフなのでFalse
+                            st.session_state.current_user = user_row["名前"].values[0]
+                            st.session_state.login_attempts = 0 # 成功でリセット
+                            st.rerun()
+                        else:
+                            st.session_state.login_attempts += 1
+                            st.error(f"IDまたはパスワードが間違っています。(残り {5 - st.session_state.login_attempts} 回)")
+                    else:
+                        st.session_state.login_attempts += 1
+                        st.error(f"IDまたはパスワードが間違っています。(残り {5 - st.session_state.login_attempts} 回)")
 
 # =========================================================
 # ログイン成功後の画面
@@ -266,7 +272,7 @@ else:
     # ---------------------------------------------------------
     # 【管理者モード】
     # ---------------------------------------------------------
-    if st.session_state.current_user == "admin":
+    if st.session_state.get("is_admin", False):
         mode = st.sidebar.radio("管理者メニュー", ["シフト作成（グラフ操作）", "🤖 AI設定", "給与・勤怠管理", "店舗設定"])
 
         if mode == "シフト作成（グラフ操作）":
