@@ -442,7 +442,8 @@ else:
                                         
                                         s, e = current_weekly_shifts[d_str].get(name, (0.0, 0.0))
                                         worked_h = e - s
-                                        req_s, req_e = st.session_state.time_requests[name][d_day]
+                                        req_times = st.session_state.time_requests.get(name, {}).get(d_day, (0.0, 0.0))
+                                        req_s, req_e = req_times
                                         req_h = req_e - req_s
                                         
                                         if worked_h > 0:
