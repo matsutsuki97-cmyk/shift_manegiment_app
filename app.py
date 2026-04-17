@@ -184,6 +184,7 @@ if 'logged_in' not in st.session_state:
 # =========================================================
 # ログイン画面
 # =========================================================
+
 if not st.session_state.logged_in:
     st.title("シフト管理システム ログイン")
     
@@ -191,63 +192,79 @@ if not st.session_state.logged_in:
     with col1:
         st.info("""
         **【ログイン情報】**
-        * スタッフ ➔ 各自に設定されたIDとパスワード
+        * 管理者 ➔ 登録メールアドレス
+        * スタッフ ➔ 各自のIDとパスワード
         """)
-        
-        # 💡 ロック状態の警告表示
-        if st.session_state.login_attempts >= 5:
-            st.error("🚨 ログインに5回失敗したため、セキュリティロックがかかっています。")
-            st.info("💡 ロックを解除するには、ブラウザを更新（リロード）してください。")
 
         with st.form("login_form"):
             username = st.text_input("ユーザーID / メールアドレス")
             password = st.text_input("パスワード", type="password")
-            submitted = st.form_submit_button("ログイン")
+            submitted = st.form_submit_button("ログイン", use_container_width=True)
             
             if submitted:
-                # 1. 試行回数チェック（5回以上なら処理しない）
-                if st.session_state.login_attempts >= 5:
-                    st.error("ロック中です。リロードしてやり直してください。")
+                now = datetime.datetime.now()
                 
-                # 2. 管理者ログイン（メールアドレス形式）
-                elif "@" in username:
+                # --- A. 管理者ログイン（Firebase Auth） ---
+                if "@" in username:
                     try:
                         user = auth.sign_in_with_email_and_password(username, password)
                         uid = user['localId']
                         
-                        # SecretsのUIDと照合
                         if uid == st.secrets["admin"]["uid"]:
                             st.session_state.logged_in = True
-                            st.session_state.is_admin = True  # ✅ フラグをセット
+                            st.session_state.is_admin = True
                             st.session_state.current_user = "店長"
-                            st.session_state.login_attempts = 0 # 成功でリセット
                             st.rerun()
                         else:
-                            st.session_state.login_attempts += 1
-                            st.error(f"管理者権限がありません。(残り {5 - st.session_state.login_attempts} 回)")
-                    except Exception as e:
-                        st.session_state.login_attempts += 1
-                        st.error(f"認証に失敗しました。(残り {5 - st.session_state.login_attempts} 回)")
+                            st.error("IDまたはパスワードが正しくありません。")
+                    except Exception:
+                        # 指摘[Medium]への対応：エラーの詳細を出さず、メッセージを統一
+                        st.error("IDまたはパスワードが正しくありません。")
                 
-                # 3. スタッフログイン（ID形式）
+                # --- B. スタッフログイン（Firestore管理） ---
                 else:
-                    user_row = st.session_state.employees[st.session_state.employees["ID"] == username]
+                    # 1. Firestoreから読み込んでいる employees の中から該当者を探す
+                    user_idx = st.session_state.employees.index[st.session_state.employees["ID"] == username].tolist()
                     
-                    if not user_row.empty:
-                        stored_hash = user_row["パスワード"].values[0]
-                        # パスワード検証
-                        if check_password(password, stored_hash):
+                    if user_idx:
+                        idx = user_idx[0]
+                        user_row = st.session_state.employees.loc[idx]
+                        
+                        # --- 🔒 指摘[High]：ロック状態の永続チェック ---
+                        lock_until_str = user_row.get("lock_until", "")
+                        if lock_until_str:
+                            lock_until = datetime.datetime.strptime(lock_until_str, "%Y-%m-%d %H:%M:%S")
+                            if now < lock_until:
+                                st.error(f"🚨 セキュリティロック中。{lock_until_str} までログインできません。")
+                                st.stop()
+
+                        # --- 🔑 パスワード検証 ---
+                        if check_password(password, user_row["パスワード"]):
+                            # 成功：試行回数をリセットして保存
+                            st.session_state.employees.at[idx, "login_attempts"] = 0
+                            st.session_state.employees.at[idx, "lock_until"] = ""
+                            save_data() # ここでFirestoreにリセットを反映
+                            
                             st.session_state.logged_in = True
-                            st.session_state.is_admin = False # ✅ スタッフなのでFalse
-                            st.session_state.current_user = user_row["名前"].values[0]
-                            st.session_state.login_attempts = 0 # 成功でリセット
+                            st.session_state.is_admin = False
+                            st.session_state.current_user = user_row["名前"]
                             st.rerun()
                         else:
-                            st.session_state.login_attempts += 1
-                            st.error(f"IDまたはパスワードが間違っています。(残り {5 - st.session_state.login_attempts} 回)")
+                            # 失敗：回数をカウントし、5回以上でロック
+                            attempts = int(user_row.get("login_attempts", 0)) + 1
+                            st.session_state.employees.at[idx, "login_attempts"] = attempts
+                            
+                            if attempts >= 5:
+                                unlock_time = (now + datetime.timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+                                st.session_state.employees.at[idx, "lock_until"] = unlock_time
+                                save_data()
+                                st.error(f"❌ 5回失敗したため、{unlock_time} までロックされました。")
+                            else:
+                                save_data()
+                                st.error("IDまたはパスワードが正しくありません。")
                     else:
-                        st.session_state.login_attempts += 1
-                        st.error(f"IDまたはパスワードが間違っています。(残り {5 - st.session_state.login_attempts} 回)")
+                        # IDが存在しない場合も、メッセージを統一して情報を漏らさない（指摘[Medium]対応）
+                        st.error("IDまたはパスワードが正しくありません。")
 
 # =========================================================
 # ログイン成功後の画面
