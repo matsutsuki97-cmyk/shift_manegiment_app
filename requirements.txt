@@ -2,13 +2,13 @@ streamlit
 pandas>=2.0.0
 jpholiday
 plotly
-torch
+#torch
 openpyxl
 firebase-admin
 pyrebase4
 bcrypt
 passlib
 pillow==11.1.0
-requests
-filelock
+requests==2.32.3
+filelock==3.13.1
 
