@@ -1172,6 +1172,7 @@ else:
                     st.session_state.time_requests[name][d_str] = times
                 
                 save_data() 
+                st.toast(f"✅ {selected_week_label} の希望を保存しました！", icon='🎉')
                 st.success(f"✅ {selected_week_label} の希望を「日付ごと」に提出しました！")
                 
 
