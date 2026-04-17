@@ -1173,7 +1173,7 @@ else:
                 
                 save_data() 
                 st.success(f"✅ {selected_week_label} の希望を「日付ごと」に提出しました！")
-                st.rerun()
+                
 
         with tab2:
             st.title(f"📅 {name} さんの月別タイムカード")
