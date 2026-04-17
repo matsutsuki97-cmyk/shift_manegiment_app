@@ -771,7 +771,8 @@ else:
             )
             def display_participation_summary():
                 st.subheader("📅 今週の勤務状況サマリー")
-                
+                base_date = datetime.strptime(date_str, "%Y/%m/%d")
+                target_week_days = [(base_date + timedelta(days=i)).strftime("%Y/%m/%d") for i in range(7)]
                 summary_data = []
                 
                 for _, row in st.session_state.employees.iterrows():
