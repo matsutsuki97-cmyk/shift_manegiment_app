@@ -13,6 +13,7 @@ import pyrebase
 import bcrypt
 
 # --- ★PyTorchモデルの読み込み ---
+timezone_jst = datetime.timezone(datetime.timedelta(hours=9))
 try:
     import torch
     # ご自身で作成したファイル名からクラスを読み込む（ファイル名が違う場合は書き換えてください）
@@ -203,7 +204,7 @@ if not st.session_state.logged_in:
             submitted = st.form_submit_button("ログイン", use_container_width=True)
             
             if submitted:
-                now = datetime.datetime.now()
+                now = datetime.datetime.now(timezone_jst).replace(tzinfo=None)
                 
                 # --- A. 管理者ログイン（Firebase Auth） ---
                 if "@" in username:
