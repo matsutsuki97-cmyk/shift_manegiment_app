@@ -1,2 +1,2 @@
-[client]
-showErrorDetails = false
+#[client]
+#showErrorDetails = false
