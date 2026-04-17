@@ -120,7 +120,7 @@ def save_data():
     
     # Firestoreのドキュメントを更新
     db.collection("shift_management").document("main_data").set(data_to_save)
-    st.success("データを安全に保存しました。")
+    st.success("データを保存しました。")
     import time
     time.sleep(1.5)
     st.rerun()
@@ -185,7 +185,7 @@ if 'logged_in' not in st.session_state:
 # ログイン画面
 # =========================================================
 if not st.session_state.logged_in:
-    st.title("🔐 シフト管理システム ログイン")
+    st.title("シフト管理システム ログイン")
     
     col1, col2 = st.columns([1, 1])
     with col1:
@@ -591,8 +591,8 @@ else:
                     st.caption(f"**本日休みのスタッフ:** {', '.join(off_staff)}")
 
             with col_ctrl:
-                st.subheader("✂️ 手動での最終微調整")
-                st.caption("AIが作成したシフトをベースに、さらに店長が微調整できます。")
+                st.subheader("手動での調整")
+                st.caption("店長が調整できます。")
                 
                 # 💡 chart_data（グラフ表示者）ではなく、全スタッフの名前でループを回す
                 # これにより、特定のスタッフでエラーが起きても他のスタッフが表示されるようになります
@@ -847,7 +847,7 @@ else:
             st.divider() # 区切り線
             display_participation_summary()
 
-        elif mode == "🤖 AI設定":
+        elif mode == "AI設定":
             st.title("🤖 必要人数 ＆ 必要平均レベルの設定")
             tab_base, tab_special = st.tabs(["📅 基本の曜日・祝日設定", "📌 手動の特例日設定"])
             
