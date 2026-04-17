@@ -751,6 +751,7 @@ else:
                                 st.rerun()
                                 
                         except Exception as e:
+                            print(f"DEBUG: Excel/Restore logic skip for {name}. Error: {e}")
                             continue
             st.divider()
             st.subheader(f"📥 {date_str} の1日分 Excel出力")
