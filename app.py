@@ -24,7 +24,8 @@ try:
     PYTORCH_AVAILABLE = True
 except Exception as e:
     PYTORCH_AVAILABLE = False
-    st.error(f"PyTorchモデルの読み込みに失敗しました。ファイル名やコードを確認してください: {e}")
+    st.error(f"PyTorchモデルの読み込みに失敗しました。ファイル名やコードを確認してください")
+    print(f"Model Load Error: {e}")
     
 def hash_password(password):
     salt = bcrypt.gensalt()
@@ -35,6 +36,7 @@ def check_password(input_password, stored_hash):
     try:
         return bcrypt.checkpw(input_password.encode('utf-8'), stored_hash.encode('utf-8'))
     except Exception:
+        print(f"Password Check Error: {e}")
         return False
 
 # --- 1. ページ設定 ---
