@@ -121,6 +121,8 @@ def save_data():
     # Firestoreのドキュメントを更新
     db.collection("shift_management").document("main_data").set(data_to_save)
     st.success("データを安全に保存しました。")
+    import time
+    time.sleep(1.5)
     st.rerun()
 
 # --- 2. データ保持（オートロード） ---
@@ -1170,11 +1172,8 @@ else:
                     d_str = current_date.strftime("%Y/%m/%d") # 2026/04/20 形式
                     times = user_times[day]
                     st.session_state.time_requests[name][d_str] = times
-                
-                save_data() 
-                st.toast(f"✅ {selected_week_label} の希望を保存しました！", icon='🎉')
-                st.success(f"✅ {selected_week_label} の希望を「日付ごと」に提出しました！")
-                
+                save_data()
+                st.success(f"✅ {selected_week_label} の希望を「日付ごと」に提出しました！") 
 
         with tab2:
             st.title(f"📅 {name} さんの月別タイムカード")
