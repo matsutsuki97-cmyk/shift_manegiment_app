@@ -782,35 +782,29 @@ else:
                     req_days = st.session_state.time_requests.get(name, {})
                     wish_count = 0
                     wish_hours = 0.0
-                    for day, times in req_days.items():
-                        # データがリストやタプルで、かつ要素が2つの時だけ処理する
+                    for day in target_week_days:  # 全データではなく、その週の7日間でループ
+                        times = req_days.get(day)
                         if isinstance(times, (list, tuple)) and len(times) == 2:
-                            start, end = times
-                            if start < end:
+                            s, e = times
+                            if s < e:
                                 wish_count += 1
-                                wish_hours += (end - start)
-                        else:
-                            # 想定外のデータ（空など）が入っていたらスキップ
-                            continue
-                        if start < end:
-                            wish_count += 1
-                            wish_hours += (end - start)
+                                wish_hours += (e - s)
                     
-                    # --- 2. 採用（日数・時間）の集計 ---
-                    active_count = 0
-                    active_hours = 0.0
-                    for day, shifts in st.session_state.daily_adjusted_times.items():
+                    # --- 2. 採用（その週の7日間だけ） ---
+                    active_count, active_hours = 0, 0.0
+                    for day in target_week_days:
+                        shifts = st.session_state.daily_adjusted_times.get(day, {})
                         if name in shifts:
                             active_count += 1
-                            start, end = shifts[name]
-                            active_hours += (end - start)
+                            s, e = shifts[name]
+                            active_hours += (e - s)
                     
                     # --- 3. データ整形 ---
                     summary_data.append({
                         "スタッフ名": name,
                         "出勤 / 希望 (日)": f"{active_count} / {wish_count}",
                         "採用 / 希望 (時間)": f"{active_hours:.1f} / {wish_hours:.1f}",
-                        "今週の給与目安": f"¥{int(active_hours * row.get('時給', 0)):,}" # ついでに給与目安も
+                        "今週の給与目安": f"¥{int(active_hours * row.get('時給', 0)):,}"
                     })
                 
                 if summary_data:
