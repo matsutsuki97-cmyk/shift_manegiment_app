@@ -183,6 +183,17 @@ if 'logged_in' not in st.session_state:
     st.session_state.current_user = None
     st.session_state.is_admin = False # ✅ これが管理者画面への「鍵」になります
 
+def save_staff_data(staff_name):
+    """スタッフが自分の希望(time_requests)と勤務記録(work_records)だけを更新する"""
+    doc_ref = db.collection("shift_management").document("main_data")
+    
+    # 全部上書き(set)ではなく、特定の部分だけ更新(update)する！
+    # これにより、employees（時給やPW）は一切触れられなくなります。
+    doc_ref.update({
+        f"time_requests.{staff_name}": st.session_state.time_requests[staff_name],
+        f"work_records.{staff_name}": st.session_state.work_records.get(staff_name, [])
+    })
+
 # =========================================================
 # ログイン画面
 # =========================================================
@@ -1191,7 +1202,7 @@ else:
                     d_str = current_date.strftime("%Y/%m/%d") # 2026/04/20 形式
                     times = user_times[day]
                     st.session_state.time_requests[name][d_str] = times
-                save_data()
+                save_staff_data(name)
                 st.success(f"✅ {selected_week_label} の希望を「日付ごと」に提出しました！") 
 
         with tab2:
@@ -1294,7 +1305,7 @@ else:
                                 }
                                 st.session_state.work_records[name].append(new_record)
                                 st.session_state.work_records[name].sort(key=lambda x: x["日付"])
-                                save_data()
+                                save_staff_data(name)
                                 st.success(f"{work_date.strftime('%Y年%m月%d日')}の記録（{daily_wage}円）を保存しました！")
                                 st.rerun()
 
@@ -1337,7 +1348,7 @@ else:
                 st.session_state.work_records[name] = other_month_records + new_month_records
                 st.session_state.work_records[name].sort(key=lambda x: x["日付"])
                 
-                save_data()
+                save_staff_data(name)
                 st.success(f"{selected_month}月の記録を更新（削除）しました！")
                 st.rerun()
             
