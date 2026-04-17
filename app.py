@@ -236,7 +236,6 @@ if not st.session_state.logged_in:
                 
                 # --- B. スタッフログイン（Firestore管理） ---
                 else:
-                    # 1. Firestoreから読み込んでいる employees の中から該当者を探す
                     user_idx = st.session_state.employees.index[st.session_state.employees["ID"] == username].tolist()
                     
                     if user_idx:
@@ -244,33 +243,37 @@ if not st.session_state.logged_in:
                         user_row = st.session_state.employees.loc[idx]
                         
                         # --- 🔒 指摘[High]：ロック状態の永続チェック ---
-                        now = datetime.datetime.now(timezone_jst).replace(tzinfo=None)
+                        # 💡 修正ポイント：文字列であることを厳格にチェック
                         lock_until_str = user_row.get("lock_until", "")
-                        if lock_until_str:
-                            lock_until = datetime.datetime.strptime(lock_until_str, "%Y-%m-%d %H:%M:%S")
-                            if now < lock_until:
-                                diff = lock_until - now
-                                minutes_left = int(diff.total_seconds() // 60)
-                                st.error(f"🚨 セキュリティロック中。後{minutes_left} 分ログインできません。")
-                                st.stop()
+                        if isinstance(lock_until_str, str) and lock_until_str.strip() != "":
+                            try:
+                                lock_until = datetime.datetime.strptime(lock_until_str, "%Y-%m-%d %H:%M:%S")
+                                if now < lock_until:
+                                    diff = lock_until - now
+                                    minutes_left = int(diff.total_seconds() // 60)
+                                    if minutes_left < 1: minutes_left = 1
+                                    st.error(f"🚨 セキュリティロック中。あと約{minutes_left}分間ログインできません。")
+                                    st.stop()
+                            except ValueError:
+                                # 日付形式が正しくない場合はロックなしとしてスルー
+                                pass
 
                         # --- 🔑 パスワード検証 ---
                         if check_password(password, user_row["パスワード"]):
-                            # 成功：試行回数をリセットして保存
                             st.session_state.employees.at[idx, "login_attempts"] = 0
                             st.session_state.employees.at[idx, "lock_until"] = ""
-                            save_data(silent=True) # ここでFirestoreにリセットを反映
+                            save_data(silent=True) 
                             
                             st.session_state.logged_in = True
                             st.session_state.is_admin = False
                             st.session_state.current_user = user_row["名前"]
                             st.rerun()
                         else:
-                            # 失敗：回数をカウントし、5回以上でロック
                             attempts = int(user_row.get("login_attempts", 0)) + 1
                             st.session_state.employees.at[idx, "login_attempts"] = attempts
                             
                             if attempts >= 5:
+                                # 💡 ここでも now を使って15分後を計算
                                 unlock_time = (now + datetime.timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
                                 st.session_state.employees.at[idx, "lock_until"] = unlock_time
                                 save_data(silent=True)
@@ -279,7 +282,6 @@ if not st.session_state.logged_in:
                                 save_data(silent=True)
                                 st.error("IDまたはパスワードが正しくありません。")
                     else:
-                        # IDが存在しない場合も、メッセージを統一して情報を漏らさない（指摘[Medium]対応）
                         st.error("IDまたはパスワードが正しくありません。")
 
 # =========================================================
