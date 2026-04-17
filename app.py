@@ -85,7 +85,7 @@ time_options = [f"{h}:{m:02d}" for h in range(6, 26) for m in (0, 15, 30, 45) if
 # =========================================================
 # セーブ機能 (Firebase版)
 # =========================================================
-def save_data():
+def save_data(silent=False):
     # 1. 現在のスタッフデータをコピーして編集用にする
     df = st.session_state.employees.copy()
 
@@ -120,10 +120,11 @@ def save_data():
     
     # Firestoreのドキュメントを更新
     db.collection("shift_management").document("main_data").set(data_to_save)
-    st.success("データを保存しました。")
-    import time
-    time.sleep(1.5)
-    st.rerun()
+    if not silent:    
+        st.success("データを保存しました。")
+        import time
+        time.sleep(1.5)
+        st.rerun()
 
 # --- 2. データ保持（オートロード） ---
 days = ["月", "火", "水", "木", "金", "土", "日"]
@@ -243,7 +244,7 @@ if not st.session_state.logged_in:
                             # 成功：試行回数をリセットして保存
                             st.session_state.employees.at[idx, "login_attempts"] = 0
                             st.session_state.employees.at[idx, "lock_until"] = ""
-                            save_data() # ここでFirestoreにリセットを反映
+                            save_data(silent=True) # ここでFirestoreにリセットを反映
                             
                             st.session_state.logged_in = True
                             st.session_state.is_admin = False
@@ -257,10 +258,10 @@ if not st.session_state.logged_in:
                             if attempts >= 5:
                                 unlock_time = (now + datetime.timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
                                 st.session_state.employees.at[idx, "lock_until"] = unlock_time
-                                save_data()
+                                save_data(silent=True)
                                 st.error(f"❌ 5回失敗したため、{unlock_time} までロックされました。")
                             else:
-                                save_data()
+                                save_data(silent=True)
                                 st.error("IDまたはパスワードが正しくありません。")
                     else:
                         # IDが存在しない場合も、メッセージを統一して情報を漏らさない（指摘[Medium]対応）
