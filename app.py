@@ -311,11 +311,18 @@ else:
             # --- 1週間分の判定用関数 ---
             def get_req_dict(d_date):
                 d_str = d_date.strftime("%Y/%m/%d")
+                d_simple = f"{d_date.year}/{d_date.month}/{d_date.day}"
                 d_day = days[d_date.weekday()]
+                
+                # 1. 特別な日付設定を最優先
                 if d_str in st.session_state.special_required_staff:
                     return st.session_state.special_required_staff[d_str]
+                elif d_simple in st.session_state.special_required_staff:
+                    return st.session_state.special_required_staff[d_simple]
+                # 2. 祝日
                 elif jpholiday.is_holiday_name(d_date):
-                    return st.session_state.required_staff["祝"]
+                    return st.session_state.required_staff.get("祝", st.session_state.required_staff[d_day])
+                # 3. デフォルトの曜日
                 else:
                     return st.session_state.required_staff[d_day]
 
@@ -365,7 +372,9 @@ else:
                                     daily_shifts = {}
                                     for name in st.session_state.employees["名前"]:
                                         person_requests = st.session_state.time_requests.get(name, {})
-                                        req_times = person_requests.get(d_day, (0.0, 0.0))
+                                        req_times = person_requests.get(d_str) or \
+                                                    person_requests.get(d_simple) or \
+                                                    person_requests.get(d_day, (0.0, 0.0))
                                         
                                         req_s, req_e = req_times
                                         if req_s < req_e:
@@ -474,7 +483,9 @@ else:
                                     for name, (s, e) in shifts.items():
                                         if e - s <= 0:
                                             removed.append(name)
-                                            req_s = st.session_state.time_requests[name][d_day][0]
+                                            p_req = st.session_state.time_requests.get(name, {})
+                                            req_times = p_req.get(d_str) or p_req.get(d_simple) or p_req.get(d_day, (6.0, 6.0))
+                                            req_s = req_times[0] 
                                             st.session_state.daily_adjusted_times[d_str][name] = (req_s, req_s)
                                         else:
                                             st.session_state.daily_adjusted_times[d_str][name] = (s, e)
@@ -605,7 +616,8 @@ else:
                             week_data = user_all_reqs[latest_key] if isinstance(user_all_reqs[latest_key], dict) else user_all_reqs
                         
                         # 曜日ごとの希望時間を取得（データなしは 6.0, 6.0）
-                        req_start, req_end = week_data.get(base_day, (6.0, 6.0))
+                        req_start, req_end = week_data.get(date_str) or \
+                                             week_data.get(base_day, (6.0, 6.0))
                         
                         # 休みのスタッフは調整スライダーを出さない
                         if name in st.session_state.daily_removed_staff[date_str] or req_start == req_end:
@@ -1153,10 +1165,15 @@ else:
             
             st.write("") 
             if st.button("基本希望を保存して提出", use_container_width=True, type="primary"):
-                # 選んだ週(week_key)の中にデータを保存する！
-                st.session_state.time_requests[name][week_key] = user_times
+                for i, day in enumerate(days):
+                    current_date = target_monday + datetime.timedelta(days=i)
+                    d_str = current_date.strftime("%Y/%m/%d") # 2026/04/20 形式
+                    times = user_times[day]
+                    st.session_state.time_requests[name][d_str] = times
+                
                 save_data() 
-                st.success(f"✅ {selected_week_label} のシフト希望を提出し、データが保存されました！")
+                st.success(f"✅ {selected_week_label} の希望を「日付ごと」に提出しました！")
+                st.rerun()
 
         with tab2:
             st.title(f"📅 {name} さんの月別タイムカード")
