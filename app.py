@@ -244,11 +244,14 @@ if not st.session_state.logged_in:
                         user_row = st.session_state.employees.loc[idx]
                         
                         # --- 🔒 指摘[High]：ロック状態の永続チェック ---
+                        now = datetime.datetime.now(timezone_jst).replace(tzinfo=None)
                         lock_until_str = user_row.get("lock_until", "")
                         if lock_until_str:
                             lock_until = datetime.datetime.strptime(lock_until_str, "%Y-%m-%d %H:%M:%S")
                             if now < lock_until:
-                                st.error(f"🚨 セキュリティロック中。{lock_until_str} までログインできません。")
+                                diff = lock_until - now
+                                minutes_left = int(diff.total_seconds() // 60)
+                                st.error(f"🚨 セキュリティロック中。後{minutes_left} 分ログインできません。")
                                 st.stop()
 
                         # --- 🔑 パスワード検証 ---
