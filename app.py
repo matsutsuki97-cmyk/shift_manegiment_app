@@ -366,7 +366,10 @@ else:
                                     
                                     daily_shifts = {}
                                     for name in st.session_state.employees["名前"]:
-                                        req_s, req_e = st.session_state.time_requests[name][d_day]
+                                        person_requests = st.session_state.time_requests.get(name, {})
+                                        req_times = person_requests.get(d_day, (0.0, 0.0))
+                                        
+                                        req_s, req_e = req_times
                                         if req_s < req_e:
                                             daily_shifts[name] = [req_s, req_e]
                                     
