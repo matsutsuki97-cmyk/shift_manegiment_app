@@ -9,7 +9,7 @@ import datetime
 import jpholiday
 import firebase_admin
 from firebase_admin import credentials, firestore
-import pyrebase
+#import pyrebase
 import bcrypt
 
 # --- ★PyTorchモデルの読み込み ---
