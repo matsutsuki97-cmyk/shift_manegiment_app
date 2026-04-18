@@ -220,11 +220,25 @@ if not st.session_state.logged_in:
             if submitted:
                 now = datetime.datetime.now(timezone_jst).replace(tzinfo=None)
                 
-                # --- A. 管理者ログイン（Firebase Auth） ---
+                # --- A. 管理者ログイン ---
                 if "@" in username:
                     try:
-                        # FirebaseのAPIに「このIDとパスワードで合ってる？」と直接聞く
-                        # api_key は st.secrets["firebase"]["api_key"] から取得
+                        # 1. Firestoreから管理者のセキュリティ状態（ロックなど）を読み込む
+                        admin_sec_ref = db.collection("shift_management").document("admin_security")
+                        admin_sec = admin_sec_ref.get()
+                        sec_data = admin_sec.to_dict() if admin_sec.exists else {"attempts": 0, "lock_until": ""}
+
+                        # ロックチェック
+                        lock_until_str = sec_data.get("lock_until", "")
+                        if lock_until_str:
+                            lock_until = datetime.datetime.strptime(lock_until_str, "%Y-%m-%d %H:%M:%S")
+                            if now < lock_until:
+                                diff = lock_until - now
+                                minutes_left = max(1, int(diff.total_seconds() // 60))
+                                st.error(f"🚨 管理者アカウントはロック中です。あと約{minutes_left}分お待ちください。")
+                                st.stop()
+
+                        # 2. Firebase Auth API で認証
                         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={st.secrets['firebase']['api_key']}"
                         payload = {"email": username, "password": password, "returnSecureToken": True}
                         
@@ -232,17 +246,32 @@ if not st.session_state.logged_in:
                         res = requests.post(url, json=payload)
                         res_data = res.json()
 
-                        # Firebaseが「OK（200）」と言い、かつUIDが許可リストにあるかチェック
+                        # 3. 認証判定
                         if res.status_code == 200 and res_data['localId'] in st.secrets["admin"]["uids"]:
+                            # ログイン成功：失敗記録をリセットして進む
+                            admin_sec_ref.set({"attempts": 0, "lock_until": ""})
+                            
                             st.session_state.logged_in = True
                             st.session_state.is_admin = True
                             st.session_state.current_user = "店長"
                             st.rerun()
                         else:
-                            # パスワード間違い、または管理者リストにUIDがない場合
-                            st.error("IDまたはパスワードが正しくありません。")
+                            # ログイン失敗：カウントアップ
+                            new_attempts = sec_data.get("attempts", 0) + 1
+                            new_sec_data = {"attempts": new_attempts, "lock_until": ""}
+                            
+                            if new_attempts >= 5:
+                                unlock_time = (now + datetime.timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+                                new_sec_data["lock_until"] = unlock_time
+                                st.error(f"❌ 5回失敗したため、{unlock_time} までロックされました。")
+                            else:
+                                st.error("IDまたはパスワードが正しくありません。")
+                            
+                            # Firestoreに失敗状態を保存（これでリロードしても逃げられない）
+                            admin_sec_ref.set(new_sec_data)
+
                     except Exception as e:
-                        st.error("ログイン処理中にエラーが発生しました。")
+                        st.error(f"ログイン処理中にエラーが発生しました。設定を確認してください。")
                 
                 # --- B. スタッフログイン（Firestore管理） ---
                 else:
