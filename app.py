@@ -271,7 +271,14 @@ if not st.session_state.logged_in:
                             st.session_state.current_user = user_row["名前"]
                             st.rerun()
                         else:
-                            attempts = int(user_row.get("login_attempts", 0)) + 1
+                            raw_val = user_row.get("login_attempts", 0)
+                            try:
+                                # 数字に変換できるなら変換、ダメなら 0
+                                current_attempts = int(raw_val) if raw_val is not None else 0
+                            except (ValueError, TypeError):
+                                current_attempts = 0
+                            
+                            attempts = current_attempts + 1
                             st.session_state.employees.at[idx, "login_attempts"] = attempts
                             
                             if attempts >= 5:
