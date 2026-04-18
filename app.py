@@ -11,6 +11,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore, auth as admin_auth
 #import pyrebase
 import bcrypt
+import requests
 
 # --- ★PyTorchモデルの読み込み ---
 timezone_jst = datetime.timezone(datetime.timedelta(hours=9))
