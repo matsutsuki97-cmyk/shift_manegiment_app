@@ -8,7 +8,7 @@ import os
 import datetime
 import jpholiday
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, auth as admin_auth
 #import pyrebase
 import bcrypt
 
@@ -66,8 +66,8 @@ auth_config = {
     "appId": st.secrets["firebase"]["app_id"],
     "databaseURL" : "https://makeshift-aa656-default-rtdb.firebaseio.com"
 }
-firebase = pyrebase.initialize_app(auth_config)
-auth = firebase.auth()
+firebase = firebase_admin.get_app()
+auth = admin_auth
 
 # =========================================================
 # 15分単位の時間を扱うための便利ツール
@@ -222,10 +222,10 @@ if not st.session_state.logged_in:
                 # --- A. 管理者ログイン（Firebase Auth） ---
                 if "@" in username:
                     try:
-                        user = auth.sign_in_with_email_and_password(username, password)
-                        uid = user['localId']
+                        user = auth.get_user_by_email(username)
+                        uid = user.uid
                         
-                        if uid == st.secrets["admin"]["uid"]:
+                        if uid == st.secrets["admin"]["uid"] and password == st.secrets["admin"]["password"]:
                             st.session_state.logged_in = True
                             st.session_state.is_admin = True
                             st.session_state.current_user = "店長"
