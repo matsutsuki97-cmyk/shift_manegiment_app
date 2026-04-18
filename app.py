@@ -222,19 +222,26 @@ if not st.session_state.logged_in:
                 # --- A. 管理者ログイン（Firebase Auth） ---
                 if "@" in username:
                     try:
-                        user = auth.get_user_by_email(username)
-                        uid = user.uid
+                        # FirebaseのAPIに「このIDとパスワードで合ってる？」と直接聞く
+                        # api_key は st.secrets["firebase"]["api_key"] から取得
+                        url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={st.secrets['firebase']['api_key']}"
+                        payload = {"email": username, "password": password, "returnSecureToken": True}
                         
-                        if uid == st.secrets["admin"]["uid"] and password == st.secrets["admin"]["password"]:
+                        import requests
+                        res = requests.post(url, json=payload)
+                        res_data = res.json()
+
+                        # Firebaseが「OK（200）」と言い、かつUIDが許可リストにあるかチェック
+                        if res.status_code == 200 and res_data['localId'] in st.secrets["admin"]["uids"]:
                             st.session_state.logged_in = True
                             st.session_state.is_admin = True
                             st.session_state.current_user = "店長"
                             st.rerun()
                         else:
+                            # パスワード間違い、または管理者リストにUIDがない場合
                             st.error("IDまたはパスワードが正しくありません。")
-                    except Exception:
-                        # 指摘[Medium]への対応：エラーの詳細を出さず、メッセージを統一
-                        st.error("IDまたはパスワードが正しくありません。")
+                    except Exception as e:
+                        st.error("ログイン処理中にエラーが発生しました。")
                 
                 # --- B. スタッフログイン（Firestore管理） ---
                 else:
