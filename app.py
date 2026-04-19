@@ -864,84 +864,90 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            def get_weekly_excel_data(target_date):
-                # 1. その週の月曜日と日曜日を計算
+            def get_weekly_gantt_with_details(target_date):
+                # 1. 1週間の範囲計算
                 start_of_week = target_date - datetime.timedelta(days=target_date.weekday())
-                end_of_week = start_of_week + datetime.timedelta(days=6)
                 
-                # 2. Firestoreからデータを取得
+                # 2. Firestoreからデータ取得
                 doc_ref = db.collection("shift_management").document("main_data")
                 doc = doc_ref.get()
-                
-                if not doc.exists:
-                    return None, start_of_week, end_of_week
+                if not doc.exists: return None, start_of_week
                 
                 data = doc.to_dict()
                 all_requests = data.get("time_requests", {})
                 
-                # 3. 1週間分の日付をループして、データを一つのリストに「つなげる」
+                # 3. エクセルの時間軸（1時間単位）
+                time_columns = [f"{h}:00" for h in range(9, 23)] # 9:00〜22:00
+            
                 rows = []
-                # 月曜から日曜までの7日間分を順番にチェック
                 for i in range(7):
                     current_day = start_of_week + datetime.timedelta(days=i)
                     d_str = current_day.strftime("%Y/%m/%d")
                     
-                    # 全スタッフ分をループ
                     for staff_name, days_dict in all_requests.items():
                         if d_str in days_dict:
                             start_h, end_h = days_dict[d_str]
-                            # 休みでない（開始と終了が異なる）場合のみ、または全表示するか選択
-                            rows.append({
+                            if start_h == end_h: continue # 休みは除外
+                            
+                            # 詳細時間の文字列作成 (例: 09:30 - 15:15)
+                            time_detail = f"{float_to_time_str(start_h)} - {float_to_time_str(end_h)}"
+                            
+                            row = {
                                 "日付": d_str,
-                                "名前": staff_name,
-                                "開始": float_to_time_str(start_h),
-                                "終了": float_to_time_str(end_h),
-                                "備考": "休み" if start_h == end_h else ""
-                            })
+                                "勤務時間": time_detail, # 名前より前に配置
+                                "名前": staff_name
+                            }
+                            
+                            # 横棒用のフラグ（30分単位のデータを1時間軸にマッピング）
+                            for h in range(9, 23):
+                                # その1時間の中に少しでも含まれていれば1を立てる
+                                if start_h < (h + 1) and end_h > h:
+                                    row[f"{h}:00"] = 1
+                                else:
+                                    row[f"{h}:00"] = 0
+                            rows.append(row)
             
-                if not rows:
-                    return None, start_of_week, end_of_week
-            
-                # 4. リストを一つのデータフレームにまとめてエクセル化
-                # これで1週間分が「縦につがなった」状態になります
+                if not rows: return None, start_of_week
                 df = pd.DataFrame(rows)
-                
-                # 日付順、その中で名前順に並び替え
-                df = df.sort_values(by=["日付", "名前"])
             
+                # 4. エクセル書き出しと装飾
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='週間シフト一覧')
+                    df.to_excel(writer, index=False, sheet_name='週間詳細シフト')
                     
-                    # エクセルの見た目を整える
                     workbook = writer.book
-                    worksheet = writer.sheets['週間シフト一覧']
-                    header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
+                    worksheet = writer.sheets['週間詳細シフト']
                     
-                    for col_num, value in enumerate(df.columns.values):
-                        worksheet.write(0, col_num, value, header_format)
-                        worksheet.set_column(col_num, col_num, 15)
-            
-                return output.getvalue(), start_of_week, end_of_week
+                    # 色塗りのフォーマット
+                    color_format = workbook.add_format({'bg_color': '#5DADE2', 'font_color': '#5DADE2'})
+                    
+                    # 条件付き書式（D列以降の時間軸に適用）
+                    last_col = len(df.columns) - 1
+                    worksheet.conditional_format(1, 3, len(df), last_col,
+                                                {'type': 'cell', 'criteria': '==', 'value': 1, 'format': color_format})
+                    
+                    # 列幅の調整
+                    worksheet.set_column(0, 0, 12) # 日付
+                    worksheet.set_column(1, 1, 15) # 勤務時間（詳細）
+                    worksheet.set_column(2, 2, 12) # 名前
+                    worksheet.set_column(3, last_col, 4) # 1時間単位の軸（少し広め）
+                    
+                return output.getvalue(), start_of_week
             
             # --- UI部分 ---
-            st.divider()
-            st.subheader("📊 週間シフト一括出力 (Excel)")
-            selected_date = st.date_input("週のどの日かを選択してください", datetime.date.today())
+            st.subheader("📊 週間ガントチャート(詳細時間付き)")
+            selected_week = st.date_input("週を選択してください", datetime.date.today(), key="gantt_detail_date")
             
-            if st.button("1週間分をまとめて出力"):
-                excel_file, start, end = get_weekly_excel_data(selected_date)
-                
-                if excel_file:
-                    st.success(f"✅ {start} から {end} までのシフトを連結しました。")
+            if st.button("詳細付き週間シフト表を生成"):
+                excel_data, start = get_weekly_gantt_with_details(selected_week)
+                if excel_data:
+                    st.success(f"✅ {start} 週の詳細付きシフト表を作成しました。")
                     st.download_button(
-                        label="📥 週間エクセルをダウンロード",
-                        data=excel_file,
-                        file_name=f"weekly_shift_{start.strftime('%Y%m%d')}.xlsx",
+                        label="📥 詳細付きシフト表をダウンロード",
+                        data=excel_data,
+                        file_name=f"weekly_detailed_gantt_{start.strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-                else:
-                    st.error("その週のデータが登録されていません。")
             
             def display_participation_summary():
                 st.subheader("📅 今週の勤務状況サマリー")
