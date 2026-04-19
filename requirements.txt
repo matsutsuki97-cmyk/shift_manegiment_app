@@ -13,3 +13,4 @@ passlib==1.7.4
 filelock==3.28.0
 urllib3>=2.6.3
 requests==2.33.1
+xlsxwriter
