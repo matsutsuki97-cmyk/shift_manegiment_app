@@ -865,11 +865,11 @@ else:
             )
 
             def get_weekly_excel_data(target_date):
-                # 1. 1週間（月〜日）の範囲を計算
+                # 1. その週の月曜日と日曜日を計算
                 start_of_week = target_date - datetime.timedelta(days=target_date.weekday())
                 end_of_week = start_of_week + datetime.timedelta(days=6)
                 
-                # 2. Firestoreから最新データを取得
+                # 2. Firestoreからデータを取得
                 doc_ref = db.collection("shift_management").document("main_data")
                 doc = doc_ref.get()
                 
@@ -877,57 +877,71 @@ else:
                     return None, start_of_week, end_of_week
                 
                 data = doc.to_dict()
-                # 提出されたシフト希望（time_requests）を取得
                 all_requests = data.get("time_requests", {})
                 
-                # 3. エクセル用のリストを作成
+                # 3. 1週間分の日付をループして、データを一つのリストに「つなげる」
                 rows = []
-                # 1週間分の日付リストを作成
-                date_list = [(start_of_week + datetime.timedelta(days=i)) for i in range(7)]
-                
-                for staff_name, weeks in all_requests.items():
-                    for date_obj in date_list:
-                        d_str = date_obj.strftime("%Y/%m/%d")
-                        # その日のデータがあれば取得
-                        if d_str in weeks:
-                            start_h, end_h = weeks[d_str]
+                # 月曜から日曜までの7日間分を順番にチェック
+                for i in range(7):
+                    current_day = start_of_week + datetime.timedelta(days=i)
+                    d_str = current_day.strftime("%Y/%m/%d")
+                    
+                    # 全スタッフ分をループ
+                    for staff_name, days_dict in all_requests.items():
+                        if d_str in days_dict:
+                            start_h, end_h = days_dict[d_str]
+                            # 休みでない（開始と終了が異なる）場合のみ、または全表示するか選択
                             rows.append({
-                                "名前": staff_name,
                                 "日付": d_str,
+                                "名前": staff_name,
                                 "開始": float_to_time_str(start_h),
                                 "終了": float_to_time_str(end_h),
-                                "休み": "◯" if start_h == end_h else ""
+                                "備考": "休み" if start_h == end_h else ""
                             })
             
                 if not rows:
                     return None, start_of_week, end_of_week
             
-                # 4. エクセル化
+                # 4. リストを一つのデータフレームにまとめてエクセル化
+                # これで1週間分が「縦につがなった」状態になります
                 df = pd.DataFrame(rows)
+                
+                # 日付順、その中で名前順に並び替え
+                df = df.sort_values(by=["日付", "名前"])
+            
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='週間シフト')
-                
+                    df.to_excel(writer, index=False, sheet_name='週間シフト一覧')
+                    
+                    # エクセルの見た目を整える
+                    workbook = writer.book
+                    worksheet = writer.sheets['週間シフト一覧']
+                    header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
+                    
+                    for col_num, value in enumerate(df.columns.values):
+                        worksheet.write(0, col_num, value, header_format)
+                        worksheet.set_column(col_num, col_num, 15)
+            
                 return output.getvalue(), start_of_week, end_of_week
             
-            # --- 画面側の表示部分 ---
-            st.subheader("📅 週間シフト一括出力")
-            target_day = st.date_input("出力したい週の日付を選択してください", datetime.date.today(), key="weekly_excel_date")
+            # --- UI部分 ---
+            st.divider()
+            st.subheader("📊 週間シフト一括出力 (Excel)")
+            selected_date = st.date_input("週のどの日かを選択してください", datetime.date.today())
             
-            if st.button("週間エクセルを生成"):
-                # 引数から session_state を消して、関数内でデータを取るように変更
-                excel_data, start, end = get_weekly_excel_data(target_day)
+            if st.button("1週間分をまとめて出力"):
+                excel_file, start, end = get_weekly_excel_data(selected_date)
                 
-                if excel_data:
-                    st.success(f"✅ {start} 〜 {end} のデータを集計しました。")
+                if excel_file:
+                    st.success(f"✅ {start} から {end} までのシフトを連結しました。")
                     st.download_button(
                         label="📥 週間エクセルをダウンロード",
-                        data=excel_data,
-                        file_name=f"weekly_shift_{start}.xlsx",
+                        data=excel_file,
+                        file_name=f"weekly_shift_{start.strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 else:
-                    st.error("指定された週のデータがFirestoreに見つかりませんでした。")
+                    st.error("その週のデータが登録されていません。")
             
             def display_participation_summary():
                 st.subheader("📅 今週の勤務状況サマリー")
