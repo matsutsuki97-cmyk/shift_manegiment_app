@@ -208,7 +208,6 @@ if not st.session_state.logged_in:
     with col1:
         st.info("""
         **【ログイン情報】**
-        * 管理者 ➔ 登録メールアドレス
         * スタッフ ➔ 各自のIDとパスワード
         """)
 
