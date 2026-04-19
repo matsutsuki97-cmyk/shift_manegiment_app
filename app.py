@@ -864,37 +864,52 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            def export_weekly_excel(target_date):
-                # 1. その週の月曜日と日曜日を計算
+            def get_weekly_excel_data(target_date, all_data_df):
+                # 月曜日を取得
                 start_of_week = target_date - datetime.timedelta(days=target_date.weekday())
+                # 日曜日を取得
                 end_of_week = start_of_week + datetime.timedelta(days=6)
                 
-                # 2. データのフィルタリング（例：df_shifts が全データを持っている場合）
-                # ※Firestoreからその範囲だけ読み込む処理にしてもOK
-                mask = (all_shifts_df['日付'] >= start_of_week) & (all_shifts_df['日付'] <= end_of_week)
-                weekly_data = all_shifts_df.loc[mask]
+                # 期間内のデータをフィルタリング
+                # ※'日付'カラムが datetime 形式であることを前提としています
+                weekly_df = all_data_df[(all_data_df['日付'].dt.date >= start_of_week) & 
+                                        (all_data_df['日付'].dt.date <= end_of_week)].copy()
                 
-                if weekly_data.empty:
-                    st.warning("指定された週にデータがありません。")
-                    return
+                if weekly_df.empty:
+                    return None, start_of_week, end_of_week
             
-                # 3. エクセル形式に変換（メモリ上のバッファに書き込む）
+                # エクセル書き出し用のバッファ
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    weekly_data.to_excel(writer, index=False, sheet_name='週間シフト')
+                    # 日付順に並び替えて出力
+                    weekly_df.sort_values(by=['日付', '名前']).to_excel(writer, index=False, sheet_name='週間シフト')
                     
-                    # ここでセルの幅を整えたり、色をつけたりの装飾も可能
-                    workbook = writer.book
+                    # 見栄えの調整（列幅など）
                     worksheet = writer.sheets['週間シフト']
-                    # (例: 列幅の調整など)
+                    for i, col in enumerate(weekly_df.columns):
+                        worksheet.set_column(i, i, 15)
+                        
+                return output.getvalue(), start_of_week, end_of_week
             
-                # 4. ダウンロードボタンの設置
-                st.download_button(
-                    label=f"📅 {start_of_week}〜{end_of_week} のエクセルを出力",
-                    data=output.getvalue(),
-                    file_name=f"weekly_shift_{start_of_week}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+            # --- 2. 画面への表示（ボタンの設置） ---
+            # 管理者画面などの適切な場所に配置してください
+            st.subheader("📅 週間シフト一括出力")
+            target_day = st.date_input("出力したい週の日付を選択してください", datetime.date.today())
+            
+            if st.button("週間エクセルを生成"):
+                # st.session_state.all_shifts など、全データが入っているDataFrameを指定
+                excel_data, start, end = get_weekly_excel_data(target_day, st.session_state.all_shifts)
+                
+                if excel_data:
+                    st.success(f"✅ {start} 〜 {end} のデータをまとめました。")
+                    st.download_button(
+                        label="📥 週間エクセルをダウンロード",
+                        data=excel_data,
+                        file_name=f"weekly_shift_{start}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.error("指定された週のデータが見つかりませんでした。")
             
             def display_participation_summary():
                 st.subheader("📅 今週の勤務状況サマリー")
