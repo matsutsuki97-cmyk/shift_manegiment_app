@@ -864,90 +864,109 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            def get_weekly_gantt_with_details(target_date):
-                # 1. 1週間の範囲計算
+            def get_weekly_segmented_gantt(target_date):
+                # 1. その週の月曜日を特定
                 start_of_week = target_date - datetime.timedelta(days=target_date.weekday())
                 
-                # 2. Firestoreからデータ取得
-                doc_ref = db.collection("shift_management").document("main_data")
-                doc = doc_ref.get()
-                if not doc.exists: return None, start_of_week
-                
-                data = doc.to_dict()
-                all_requests = data.get("time_requests", {})
-                
-                # 3. エクセルの時間軸（1時間単位）
-                time_columns = [f"{h}:00" for h in range(9, 23)] # 9:00〜22:00
-            
-                rows = []
-                for i in range(7):
-                    current_day = start_of_week + datetime.timedelta(days=i)
-                    d_str = current_day.strftime("%Y/%m/%d")
-                    
-                    for staff_name, days_dict in all_requests.items():
-                        if d_str in days_dict:
-                            start_h, end_h = days_dict[d_str]
-                            if start_h == end_h: continue # 休みは除外
-                            
-                            # 詳細時間の文字列作成 (例: 09:30 - 15:15)
-                            time_detail = f"{float_to_time_str(start_h)} - {float_to_time_str(end_h)}"
-                            
-                            row = {
-                                "日付": d_str,
-                                "勤務時間": time_detail, # 名前より前に配置
-                                "名前": staff_name
-                            }
-                            
-                            # 横棒用のフラグ（30分単位のデータを1時間軸にマッピング）
-                            for h in range(9, 23):
-                                # その1時間の中に少しでも含まれていれば1を立てる
-                                if start_h < (h + 1) and end_h > h:
-                                    row[f"{h}:00"] = 1
-                                else:
-                                    row[f"{h}:00"] = 0
-                            rows.append(row)
-            
-                if not rows: return None, start_of_week
-                df = pd.DataFrame(rows)
-            
-                # 4. エクセル書き出しと装飾
+                # エクセル書き出し用のバッファ
                 output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='週間詳細シフト')
+                
+                # 最終的にエクセルに書き出すための空のリスト
+                all_days_rows = []
+                
+                # 2. 月曜(0)から日曜(6)までループ
+                for i in range(7):
+                    current_date = start_of_week + datetime.timedelta(days=i)
+                    date_str = current_date.strftime("%Y/%m/%d")
                     
-                    workbook = writer.book
-                    worksheet = writer.sheets['週間詳細シフト']
+                    # --- ここから松村さんのロジックを週単位に適用 ---
+                    working_staff = []
+                    # st.session_state.employees から名前を取得
+                    for n in st.session_state.employees["名前"]:
+                        # 削除されていないスタッフを確認
+                        removed_list = st.session_state.daily_removed_staff.get(date_str, [])
+                        if n not in removed_list:
+                            day_adjustments = st.session_state.daily_adjusted_times.get(date_str, {})
+                            a_s, a_e = tuple(day_adjustments.get(n, (6.0, 6.0)))
+                            if a_s < a_e:
+                                working_staff.append({"name": n, "start": float(a_s), "end": float(a_e)})
                     
-                    # 色塗りのフォーマット
-                    color_format = workbook.add_format({'bg_color': '#5DADE2', 'font_color': '#5DADE2'})
+                    if not working_staff:
+                        # 勤務者がいない日も日付だけは入れる
+                        all_days_rows.append({"日付": f"--- {date_str} (出勤なし) ---"})
+                        continue
+                        
+                    # 開始時間でソート
+                    working_staff.sort(key=lambda x: x["start"])
                     
-                    # 条件付き書式（D列以降の時間軸に適用）
-                    last_col = len(df.columns) - 1
-                    worksheet.conditional_format(1, 3, len(df), last_col,
-                                                {'type': 'cell', 'criteria': '==', 'value': 1, 'format': color_format})
+                    # 段組みロジック（松村さんオリジナル）
+                    lanes, assignments = [], {}
+                    for staff in working_staff:
+                        assigned = False
+                        for j, lane_end_time in enumerate(lanes):
+                            if lane_end_time <= staff["start"]:
+                                lanes[j] = staff["end"]
+                                assignments[staff["name"]] = j
+                                assigned = True
+                                break
+                        if not assigned:
+                            lanes.append(staff["end"])
+                            assignments[staff["name"]] = len(lanes) - 1
                     
-                    # 列幅の調整
-                    worksheet.set_column(0, 0, 12) # 日付
-                    worksheet.set_column(1, 1, 15) # 勤務時間（詳細）
-                    worksheet.set_column(2, 2, 12) # 名前
-                    worksheet.set_column(3, last_col, 4) # 1時間単位の軸（少し広め）
+                    max_rows = len(lanes)
+                    matrix = [["" for _ in time_cols] for _ in range(max_rows)]
                     
+                    for staff in working_staff:
+                        row_idx = assignments[staff["name"]]
+                        s, e = staff["start"], staff["end"]
+                        for col_idx, t_str in enumerate(time_cols):
+                            t_float = time_str_to_float(t_str)
+                            if t_float == s:
+                                matrix[row_idx][col_idx] = staff["name"]
+                            elif s < t_float < e:
+                                matrix[row_idx][col_idx] = "ー"
+                    
+                    # 日付ラベル行を追加
+                    all_days_rows.append({"日付": f"📅 {date_str}"})
+                    
+                    # 各段のデータを追加
+                    for r in range(max_rows):
+                        row_data = {"日付": f"{r+1}段目"}
+                        for c, t_str in enumerate(time_cols):
+                            row_data[t_str] = matrix[r][c]
+                        all_days_rows.append(row_data)
+                    
+                    # 日の区切りに空行を入れる
+                    all_days_rows.append({})
+            
+                # 3. DataFrame化してエクセルへ
+                df_weekly = pd.DataFrame(all_days_rows)
+                
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df_weekly.to_excel(writer, index=False, sheet_name="週間シフト表")
+                    worksheet = writer.sheets["週間シフト表"]
+                    
+                    # 列幅の調整（A列: 日付/段、その他: 時間軸）
+                    worksheet.column_dimensions['A'].width = 18
+                    for i in range(2, len(df_weekly.columns) + 1):
+                        col_letter = worksheet.cell(row=1, column=i).column_letter
+                        worksheet.column_dimensions[col_letter].width = 6
+            
                 return output.getvalue(), start_of_week
             
-            # --- UI部分 ---
-            st.subheader("📊 週間ガントチャート(詳細時間付き)")
-            selected_week = st.date_input("週を選択してください", datetime.date.today(), key="gantt_detail_date")
+            # --- 画面表示 ---
+            st.subheader("🗓️ 週間「段組み」シフト表出力")
+            week_date = st.date_input("週を選択してください", datetime.date.today(), key="weekly_segmented_date")
             
-            if st.button("詳細付き週間シフト表を生成"):
-                excel_data, start = get_weekly_gantt_with_details(selected_week)
-                if excel_data:
-                    st.success(f"✅ {start} 週の詳細付きシフト表を作成しました。")
-                    st.download_button(
-                        label="📥 詳細付きシフト表をダウンロード",
-                        data=excel_data,
-                        file_name=f"weekly_detailed_gantt_{start.strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+            if st.button("1週間分を連結して出力"):
+                excel_bin, start_date = get_weekly_segmented_gantt(week_date)
+                
+                st.download_button(
+                    label=f"📥 {start_date.strftime('%m/%d')}週のシフト表をダウンロード",
+                    data=excel_bin,
+                    file_name=f"weekly_shift_{start_date.strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
             
             def display_participation_summary():
                 st.subheader("📅 今週の勤務状況サマリー")
