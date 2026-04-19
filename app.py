@@ -863,6 +863,39 @@ else:
                 file_name=f"shift_{date_str.replace('/','')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+
+            def export_weekly_excel(target_date):
+                # 1. その週の月曜日と日曜日を計算
+                start_of_week = target_date - datetime.timedelta(days=target_date.weekday())
+                end_of_week = start_of_week + datetime.timedelta(days=6)
+                
+                # 2. データのフィルタリング（例：df_shifts が全データを持っている場合）
+                # ※Firestoreからその範囲だけ読み込む処理にしてもOK
+                mask = (all_shifts_df['日付'] >= start_of_week) & (all_shifts_df['日付'] <= end_of_week)
+                weekly_data = all_shifts_df.loc[mask]
+                
+                if weekly_data.empty:
+                    st.warning("指定された週にデータがありません。")
+                    return
+            
+                # 3. エクセル形式に変換（メモリ上のバッファに書き込む）
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    weekly_data.to_excel(writer, index=False, sheet_name='週間シフト')
+                    
+                    # ここでセルの幅を整えたり、色をつけたりの装飾も可能
+                    workbook = writer.book
+                    worksheet = writer.sheets['週間シフト']
+                    # (例: 列幅の調整など)
+            
+                # 4. ダウンロードボタンの設置
+                st.download_button(
+                    label=f"📅 {start_of_week}〜{end_of_week} のエクセルを出力",
+                    data=output.getvalue(),
+                    file_name=f"weekly_shift_{start_of_week}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            
             def display_participation_summary():
                 st.subheader("📅 今週の勤務状況サマリー")
                 
