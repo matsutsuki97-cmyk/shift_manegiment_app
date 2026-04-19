@@ -243,7 +243,7 @@ if not st.session_state.logged_in:
                         payload = {"email": username, "password": password, "returnSecureToken": True}
                         
                         import requests
-                        res = requests.post(url, json=payload)
+                        res = requests.post(url, json=payload, timeout=10)
                         res_data = res.json()
 
                         # 3. 認証判定
