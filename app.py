@@ -864,44 +864,62 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            def get_weekly_excel_data(target_date, all_data_df):
-                # 月曜日を取得
+            def get_weekly_excel_data(target_date):
+                # 1. 1週間（月〜日）の範囲を計算
                 start_of_week = target_date - datetime.timedelta(days=target_date.weekday())
-                # 日曜日を取得
                 end_of_week = start_of_week + datetime.timedelta(days=6)
                 
-                # 期間内のデータをフィルタリング
-                # ※'日付'カラムが datetime 形式であることを前提としています
-                weekly_df = all_data_df[(all_data_df['日付'].dt.date >= start_of_week) & 
-                                        (all_data_df['日付'].dt.date <= end_of_week)].copy()
+                # 2. Firestoreから最新データを取得
+                doc_ref = db.collection("shift_management").document("main_data")
+                doc = doc_ref.get()
                 
-                if weekly_df.empty:
+                if not doc.exists:
+                    return None, start_of_week, end_of_week
+                
+                data = doc.to_dict()
+                # 提出されたシフト希望（time_requests）を取得
+                all_requests = data.get("time_requests", {})
+                
+                # 3. エクセル用のリストを作成
+                rows = []
+                # 1週間分の日付リストを作成
+                date_list = [(start_of_week + datetime.timedelta(days=i)) for i in range(7)]
+                
+                for staff_name, weeks in all_requests.items():
+                    for date_obj in date_list:
+                        d_str = date_obj.strftime("%Y/%m/%d")
+                        # その日のデータがあれば取得
+                        if d_str in weeks:
+                            start_h, end_h = weeks[d_str]
+                            rows.append({
+                                "名前": staff_name,
+                                "日付": d_str,
+                                "開始": float_to_time_str(start_h),
+                                "終了": float_to_time_str(end_h),
+                                "休み": "◯" if start_h == end_h else ""
+                            })
+            
+                if not rows:
                     return None, start_of_week, end_of_week
             
-                # エクセル書き出し用のバッファ
+                # 4. エクセル化
+                df = pd.DataFrame(rows)
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    # 日付順に並び替えて出力
-                    weekly_df.sort_values(by=['日付', '名前']).to_excel(writer, index=False, sheet_name='週間シフト')
-                    
-                    # 見栄えの調整（列幅など）
-                    worksheet = writer.sheets['週間シフト']
-                    for i, col in enumerate(weekly_df.columns):
-                        worksheet.set_column(i, i, 15)
-                        
+                    df.to_excel(writer, index=False, sheet_name='週間シフト')
+                
                 return output.getvalue(), start_of_week, end_of_week
             
-            # --- 2. 画面への表示（ボタンの設置） ---
-            # 管理者画面などの適切な場所に配置してください
+            # --- 画面側の表示部分 ---
             st.subheader("📅 週間シフト一括出力")
-            target_day = st.date_input("出力したい週の日付を選択してください", datetime.date.today())
+            target_day = st.date_input("出力したい週の日付を選択してください", datetime.date.today(), key="weekly_excel_date")
             
             if st.button("週間エクセルを生成"):
-                # st.session_state.all_shifts など、全データが入っているDataFrameを指定
-                excel_data, start, end = get_weekly_excel_data(target_day, st.session_state.all_shifts)
+                # 引数から session_state を消して、関数内でデータを取るように変更
+                excel_data, start, end = get_weekly_excel_data(target_day)
                 
                 if excel_data:
-                    st.success(f"✅ {start} 〜 {end} のデータをまとめました。")
+                    st.success(f"✅ {start} 〜 {end} のデータを集計しました。")
                     st.download_button(
                         label="📥 週間エクセルをダウンロード",
                         data=excel_data,
@@ -909,7 +927,7 @@ else:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                 else:
-                    st.error("指定された週のデータが見つかりませんでした。")
+                    st.error("指定された週のデータがFirestoreに見つかりませんでした。")
             
             def display_participation_summary():
                 st.subheader("📅 今週の勤務状況サマリー")
