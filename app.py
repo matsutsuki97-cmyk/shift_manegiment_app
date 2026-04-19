@@ -864,107 +864,118 @@ else:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            def get_weekly_segmented_gantt(target_date):
-                # 1. その週の月曜日を特定
+            def get_weekly_segmented_detailed_gantt(target_date):
+                # 1. 週の開始日（月曜日）を特定
                 start_of_week = target_date - datetime.timedelta(days=target_date.weekday())
                 
-                # エクセル書き出し用のバッファ
-                output = io.BytesIO()
+                # 1時間刻みの時間軸（9:00〜22:00）
+                weekly_time_cols = [f"{h}:00" for h in range(9, 23)]
                 
-                # 最終的にエクセルに書き出すための空のリスト
                 all_days_rows = []
                 
-                # 2. 月曜(0)から日曜(6)までループ
+                # 2. 月曜から日曜まで7日間ループ
                 for i in range(7):
                     current_date = start_of_week + datetime.timedelta(days=i)
                     date_str = current_date.strftime("%Y/%m/%d")
                     
-                    # --- ここから松村さんのロジックを週単位に適用 ---
+                    # --- 勤務スタッフの抽出と調整後時間の取得 ---
                     working_staff = []
-                    # st.session_state.employees から名前を取得
                     for n in st.session_state.employees["名前"]:
-                        # 削除されていないスタッフを確認
                         removed_list = st.session_state.daily_removed_staff.get(date_str, [])
                         if n not in removed_list:
                             day_adjustments = st.session_state.daily_adjusted_times.get(date_str, {})
+                            # デフォルトは 6.0 (休み)
                             a_s, a_e = tuple(day_adjustments.get(n, (6.0, 6.0)))
                             if a_s < a_e:
-                                working_staff.append({"name": n, "start": float(a_s), "end": float(a_e)})
+                                working_staff.append({
+                                    "name": n, 
+                                    "start": float(a_s), 
+                                    "end": float(a_e),
+                                    "detail": f"{float_to_time_str(a_s)}-{float_to_time_str(a_e)}" # 詳細時間
+                                })
+                    
+                    # 日付の見出し行を挿入
+                    all_days_rows.append({"時間軸/日付": f"📅 {date_str}"})
                     
                     if not working_staff:
-                        # 勤務者がいない日も日付だけは入れる
-                        all_days_rows.append({"日付": f"--- {date_str} (出勤なし) ---"})
+                        all_days_rows.append({"時間軸/日付": "（出勤なし）"})
+                        all_days_rows.append({}) # 空行
                         continue
                         
                     # 開始時間でソート
                     working_staff.sort(key=lambda x: x["start"])
                     
-                    # 段組みロジック（松村さんオリジナル）
+                    # --- 松村さん流：段組みロジック ---
                     lanes, assignments = [], {}
                     for staff in working_staff:
                         assigned = False
                         for j, lane_end_time in enumerate(lanes):
                             if lane_end_time <= staff["start"]:
                                 lanes[j] = staff["end"]
-                                assignments[staff["name"]] = j
+                                assignments[f"{staff['name']}_{staff['detail']}"] = j # 重複回避のため詳細もキーに
                                 assigned = True
                                 break
                         if not assigned:
                             lanes.append(staff["end"])
-                            assignments[staff["name"]] = len(lanes) - 1
+                            assignments[f"{staff['name']}_{staff['detail']}"] = len(lanes) - 1
                     
                     max_rows = len(lanes)
-                    matrix = [["" for _ in time_cols] for _ in range(max_rows)]
+                    # 行列の作成（1時間刻み）
+                    matrix = [["" for _ in weekly_time_cols] for _ in range(max_rows)]
                     
                     for staff in working_staff:
-                        row_idx = assignments[staff["name"]]
+                        row_idx = assignments[f"{staff['name']}_{staff['detail']}"]
                         s, e = staff["start"], staff["end"]
-                        for col_idx, t_str in enumerate(time_cols):
-                            t_float = time_str_to_float(t_str)
-                            if t_float == s:
-                                matrix[row_idx][col_idx] = staff["name"]
+                        # 詳細情報（時間 + 名前）をセルの最初に埋め込む
+                        display_text = f"[{staff['detail']}] {staff['name']}"
+                        
+                        for col_idx, t_str in enumerate(weekly_time_cols):
+                            t_float = float(t_str.split(':')[0]) # 1時間単位の判定
+                            
+                            # 出勤時間内であれば塗りつぶし
+                            if t_float <= s < (t_float + 1.0):
+                                matrix[row_idx][col_idx] = display_text # 最初のセルに情報を入れる
                             elif s < t_float < e:
                                 matrix[row_idx][col_idx] = "ー"
                     
-                    # 日付ラベル行を追加
-                    all_days_rows.append({"日付": f"📅 {date_str}"})
-                    
-                    # 各段のデータを追加
+                    # DataFrame用の行データに変換して追加
                     for r in range(max_rows):
-                        row_data = {"日付": f"{r+1}段目"}
-                        for c, t_str in enumerate(time_cols):
+                        row_data = {"時間軸/日付": f"{r+1}段目"}
+                        for c, t_str in enumerate(weekly_time_cols):
                             row_data[t_str] = matrix[r][c]
                         all_days_rows.append(row_data)
                     
-                    # 日の区切りに空行を入れる
+                    # 日の区切りに空行
                     all_days_rows.append({})
             
-                # 3. DataFrame化してエクセルへ
-                df_weekly = pd.DataFrame(all_days_rows)
+                # 3. エクセル出力
+                df_final = pd.DataFrame(all_days_rows)
+                output = io.BytesIO()
                 
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df_weekly.to_excel(writer, index=False, sheet_name="週間シフト表")
-                    worksheet = writer.sheets["週間シフト表"]
+                    df_final.to_excel(writer, index=False, sheet_name="週間段組みシフト")
+                    ws = writer.sheets["週間段組みシフト"]
                     
-                    # 列幅の調整（A列: 日付/段、その他: 時間軸）
-                    worksheet.column_dimensions['A'].width = 18
-                    for i in range(2, len(df_weekly.columns) + 1):
-                        col_letter = worksheet.cell(row=1, column=i).column_letter
-                        worksheet.column_dimensions[col_letter].width = 6
+                    # 列幅の調整
+                    ws.column_dimensions['A'].width = 15 # 段組み/日付列
+                    for col in ws.columns:
+                        col_letter = col[0].column_letter
+                        if col_letter != 'A':
+                            ws.column_dimensions[col_letter].width = 18 # 文字が入るので少し広めに
             
                 return output.getvalue(), start_of_week
             
-            # --- 画面表示 ---
-            st.subheader("🗓️ 週間「段組み」シフト表出力")
-            week_date = st.date_input("週を選択してください", datetime.date.today(), key="weekly_segmented_date")
+            # --- UI部分 ---
+            st.divider()
+            st.subheader("🗓️ 週間「段組み＋詳細」シフト表出力")
+            q_date = st.date_input("出力したい週の日付を選択", datetime.date.today(), key="last_excel_date")
             
-            if st.button("1週間分を連結して出力"):
-                excel_bin, start_date = get_weekly_segmented_gantt(week_date)
-                
+            if st.button("週間詳細シフト表を生成"):
+                bin_data, start_d = get_weekly_segmented_detailed_gantt(q_date)
                 st.download_button(
-                    label=f"📥 {start_date.strftime('%m/%d')}週のシフト表をダウンロード",
-                    data=excel_bin,
-                    file_name=f"weekly_shift_{start_date.strftime('%Y%m%d')}.xlsx",
+                    label="📥 週間詳細エクセルをダウンロード",
+                    data=bin_data,
+                    file_name=f"weekly_rich_shift_{start_d.strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             
